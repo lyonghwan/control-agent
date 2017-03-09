@@ -10,6 +10,7 @@ import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Map;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -17,13 +18,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
+import xyz.elidom.control.agent.util.StreamPrinter;
+
 @RestController
 public class ServerSideController {
+	
 	protected Logger logger = LoggerFactory.getLogger(ServerSideController.class);
 
 	@Autowired
@@ -31,12 +36,12 @@ public class ServerSideController {
 	 
 	/**
 	 * App Container Start Batch
-	 * @param app_id
+	 * @param appId
 	 * @return execute message
 	 */
-	@RequestMapping(value = "/apps/{app_id}/start", method = RequestMethod.POST)
-	public String StartBoot(@PathVariable("app_id") String app_id) {
-		HashMap<String,String> pMap = this.checkProperties(app_id, "start");
+	@RequestMapping(value = "/apps/{appId}/start", method = RequestMethod.POST)
+	public String startBoot(@PathVariable("appId") String appId) {
+		HashMap<String,String> pMap = this.checkProperties(appId, "start");
 		if(pMap.get("RESULT").equals("FAIL")) return pMap.get("MSG");
 		
 		try {
@@ -44,7 +49,25 @@ public class ServerSideController {
 		} catch (Exception e) {
 			return "Error : \n\n" + e.getMessage();
 		}
+		
 		return "Enterd Startup Command SUCCESS";
+	}
+	
+	/**
+	 * App Container Start Batch
+	 * @param appId
+	 * @return execute message
+	 */
+	@RequestMapping(value = "/apps/{app_id}/restart", method = RequestMethod.POST)
+	public String retartBoot(@PathVariable("app_id") String appId) {
+		this.stopBoot(appId);
+		
+		try {
+			Thread.sleep(10000);
+		} catch (InterruptedException e) {
+		}
+		
+		return this.startBoot(appId);
 	}
 	
 	/**
@@ -53,7 +76,7 @@ public class ServerSideController {
 	 * @return execute message
 	 */
 	@RequestMapping(value = "/apps/{app_id}/stop", method = RequestMethod.POST)
-	public String StopBoot(@PathVariable("app_id") String app_id){
+	public String stopBoot(@PathVariable("app_id") String app_id){
 		HashMap<String,String> pMap = this.checkProperties(app_id, "stop");
 		if(pMap.get("RESULT").equals("FAIL")) return pMap.get("MSG");
 		
@@ -71,7 +94,7 @@ public class ServerSideController {
 	 * @return execute message
 	 */
 	@RequestMapping(value = "/apps/{app_id}/udpate", method = RequestMethod.POST)
-	public String UpdateBatch(@PathVariable("app_id") String app_id){
+	public String deploy(@PathVariable("app_id") String app_id){
 		HashMap<String,String> pMap = this.checkProperties(app_id, "update");
 		if(pMap.get("RESULT").equals("FAIL")) return pMap.get("MSG");
 		
@@ -84,14 +107,16 @@ public class ServerSideController {
 	}
 	
 	/**
-	 * App Container Log Batch
+	 * 로그 파일을 읽어서 내용을 리턴  
+	 * 
 	 * @param app_id
 	 * @return today log file
 	 */
-	@RequestMapping(value = "/apps/{app_id}/log", method = RequestMethod.POST)
-	public String readLog(@PathVariable("app_id") String app_id){
+	@RequestMapping(value = "/apps/{app_id}/log", method = RequestMethod.GET, produces=MediaType.APPLICATION_JSON_VALUE)
+	public Map<String, String> readLog(@PathVariable("app_id") String app_id) {
+		
 		HashMap<String,String> pMap = this.checkProperties(app_id, "log");
-		if(pMap.get("RESULT").equals("FAIL")) return pMap.get("MSG");
+		if(pMap.get("RESULT").equals("FAIL")) return pMap;
 		
 		Date date = new Date();
 		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
@@ -100,8 +125,9 @@ public class ServerSideController {
 		String content = "";
 		FileReader fReader = null;
 		BufferedReader bReader = null;
+		Map<String, String> result = new HashMap<String, String>();
 		
-		try{
+		try {
 			fReader = new FileReader(logPath);
 			bReader = new BufferedReader(fReader);
 			
@@ -109,18 +135,24 @@ public class ServerSideController {
 			while( (temp = bReader.readLine()) != null) {
 			    content += temp + "\n";
 			}
-		} catch(FileNotFoundException e){
-			return "Log File Not Found !";
+		} catch(FileNotFoundException e) {
+			result.put("success", "false");
+			result.put("msg", "Log File Not Found!");
+			return result;
+			
 		} catch (Exception e) {
-			return "Error : \n\n" + e.getMessage();
+			result.put("success", "false");
+			result.put("msg", e.getMessage());
+			return result;
+			
 		} finally{
-			if(bReader != null){
+			if(bReader != null) {
 				try {
 					bReader.close();
 				} catch (IOException e) {
 				}
 			}
-			if(fReader != null){
+			if(fReader != null) {
 				try {
 					fReader.close();
 				} catch (IOException e) {
@@ -128,7 +160,9 @@ public class ServerSideController {
 			}
 		}
 		
-		return content;
+		result.put("id", "1");
+		result.put("log", content);
+		return result;
 	}
 	
 	@RequestMapping(value = "/apps/{app_id}/info", method = RequestMethod.POST)
@@ -179,7 +213,7 @@ public class ServerSideController {
 	 * @param app_id
 	 * @return
 	 */
-	private HashMap<String,String> getDomainInfo(String app_id){
+	private HashMap<String,String> getDomainInfo(String app_id) {
 		HashMap<String,String> pMap = this.checkProperties(app_id, "info");
 		if(pMap.get("RESULT").equals("FAIL")) return pMap;
 		
@@ -243,10 +277,10 @@ public class ServerSideController {
 	private void commandStart(String Path) throws Exception{
 		ProcessBuilder pBuilder = new ProcessBuilder();
 		pBuilder.command(Path);
-		
 		Process process = pBuilder.start();
+		StreamPrinter.printStream(process);
 		
-		while(process.isAlive()){
+		while(process.isAlive()) {
 			Thread.sleep(100);
 		}
 	}
