@@ -1,46 +1,52 @@
 package xyz.elidom.control.agent.rest;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.json.JSONArray;
-import org.json.JSONObject;
+//import org.json.JSONArray;
+//import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
 
 import xyz.elidom.control.agent.util.StreamPrinter;
 
 @RestController
-public class ServerSideController {
+public class AgentController {
 	
-	protected Logger logger = LoggerFactory.getLogger(ServerSideController.class);
+	protected Logger logger = LoggerFactory.getLogger(AgentController.class);
 
+	private static final String FILE_SEPARATOR = "/";
+	private static final String LOG_FILENAME = "applicatoin.";
+	private static final String LOG_FILENAME_2 = "application.";
+	private static final String LOG_FILE_EXT = ".log";
+	
 	@Autowired
 	Environment env;
 	 
 	/**
-	 * App Container Start Batch
+	 * Application Start
+	 * 
 	 * @param appId
 	 * @return execute message
 	 */
-	@RequestMapping(value = "/apps/{appId}/start", method = RequestMethod.POST)
-	public String startBoot(@PathVariable("appId") String appId) {
+	@RequestMapping(value = "/apps/{app_id}/start", method = RequestMethod.POST)
+	public String startBoot(@PathVariable("app_id") String appId) {
 		HashMap<String,String> pMap = this.checkProperties(appId, "start");
 		if(pMap.get("RESULT").equals("FAIL")) return pMap.get("MSG");
 		
@@ -54,86 +60,121 @@ public class ServerSideController {
 	}
 	
 	/**
-	 * App Container Start Batch
+	 * Application Restart
+	 * 
 	 * @param appId
 	 * @return execute message
 	 */
 	@RequestMapping(value = "/apps/{app_id}/restart", method = RequestMethod.POST)
 	public String retartBoot(@PathVariable("app_id") String appId) {
-		this.stopBoot(appId);
+		try {
+			this.stopBoot(appId);
+		} catch (Exception e) {
+			this.logger.error("Failed to shutdown application : " + e.getMessage());
+		}
 		
 		try {
 			Thread.sleep(10000);
-		} catch (InterruptedException e) {
+		} catch (Exception e) {			
 		}
 		
 		return this.startBoot(appId);
 	}
 	
 	/**
-	 * App Container Stop Batch
-	 * @param app_id
+	 * Application Stop
+	 * 
+	 * @param appId
 	 * @return execute message
 	 */
 	@RequestMapping(value = "/apps/{app_id}/stop", method = RequestMethod.POST)
-	public String stopBoot(@PathVariable("app_id") String app_id){
-		HashMap<String,String> pMap = this.checkProperties(app_id, "stop");
-		if(pMap.get("RESULT").equals("FAIL")) return pMap.get("MSG");
-		
-		try {
-			this.commandStart(pMap.get("PATH"));
-		} catch (Exception e) {
-			return "Error : \n\n" + e.getMessage();
-		}
-		return "Enterd Stop Command SUCCESS";
+	public String stopBoot(@PathVariable("app_id") String appId) {
+		RestTemplate rest = new RestTemplate();
+		String port = this.env.getProperty(appId + ".port");
+		String url = "http://localhost:" + port + "/shutdown";
+		ResponseEntity<String> response = rest.postForEntity(url, "", String.class);
+		return response.getBody();
 	}
 	
 	/**
-	 * App Container Update Batch
-	 * @param app_id
+	 * Application Deploy
+	 * 
+	 * @param appId
 	 * @return execute message
 	 */
 	@RequestMapping(value = "/apps/{app_id}/udpate", method = RequestMethod.POST)
-	public String deploy(@PathVariable("app_id") String app_id){
-		HashMap<String,String> pMap = this.checkProperties(app_id, "update");
+	public String deploy(@PathVariable("app_id") String appId) {
+		this.stopBoot(appId);
+		
+		try {
+			Thread.sleep(10000);
+		} catch (Exception e) {			
+		}		
+		
+		HashMap<String,String> pMap = this.checkProperties(appId, "update");
 		if(pMap.get("RESULT").equals("FAIL")) return pMap.get("MSG");
 		
 		try {
 			this.commandStart(pMap.get("PATH"));
 		} catch (Exception e) {
-			return "Error : \n\n" + e.getMessage();
+			return "Failed to update application execution file : " + e.getMessage();
 		}
-		return "Enterd Update Command SUCCESS";
+		
+		this.startBoot(appId);
+		return "OK";
+	}
+	
+	/**
+	 * Log File Path를 리턴 
+	 * 
+	 * @param path
+	 * @return
+	 */
+	private String getLogFilePath(String path) {
+		StringBuffer logPath = new StringBuffer();
+		Date today = new Date();
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+		logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? "" : FILE_SEPARATOR).append(LOG_FILENAME).append(sdf.format(today)).append(LOG_FILE_EXT);
+		
+		File file = new File(logPath.toString());
+		if(!file.exists()) {
+			logPath = new StringBuffer();
+			logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? "" : FILE_SEPARATOR).append(LOG_FILENAME_2).append(sdf.format(today)).append(LOG_FILE_EXT);
+			file = new File(logPath.toString());
+			
+			if(!file.exists()) {
+				throw new RuntimeException("Log File (" + logPath.toString() + ") Not Found!");
+			}
+		}
+		
+		return logPath.toString();
 	}
 	
 	/**
 	 * 로그 파일을 읽어서 내용을 리턴  
 	 * 
-	 * @param app_id
+	 * @param appId
 	 * @return today log file
 	 */
 	@RequestMapping(value = "/apps/{app_id}/log", method = RequestMethod.GET, produces=MediaType.APPLICATION_JSON_VALUE)
-	public Map<String, String> readLog(@PathVariable("app_id") String app_id) {
+	public Map<String, String> readLog(@PathVariable("app_id") String appId) {
 		
-		HashMap<String,String> pMap = this.checkProperties(app_id, "log");
+		HashMap<String,String> pMap = this.checkProperties(appId, "log");
 		if(pMap.get("RESULT").equals("FAIL")) return pMap;
 		
-		Date date = new Date();
-		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-		String logPath = (pMap.get("PATH").endsWith("/") ? pMap.get("PATH") : pMap.get("PATH") + "/") + "applicatoin." + sdf.format(date) + ".log";
-		
-		String content = "";
+		String logPath = this.getLogFilePath(pMap.get("PATH")); 
+		StringBuffer content = new StringBuffer();
 		FileReader fReader = null;
 		BufferedReader bReader = null;
 		Map<String, String> result = new HashMap<String, String>();
 		
+		// TODO 마지막 1000 라인만 읽기 - 읽을 라인은 설정으로 ...
 		try {
 			fReader = new FileReader(logPath);
 			bReader = new BufferedReader(fReader);
-			
 			String temp = "";
-			while( (temp = bReader.readLine()) != null) {
-			    content += temp + "\n";
+			while((temp = bReader.readLine()) != null) {
+			    content.append(temp).append("\n");
 			}
 		} catch(FileNotFoundException e) {
 			result.put("success", "false");
@@ -145,7 +186,7 @@ public class ServerSideController {
 			result.put("msg", e.getMessage());
 			return result;
 			
-		} finally{
+		} finally {
 			if(bReader != null) {
 				try {
 					bReader.close();
@@ -161,33 +202,37 @@ public class ServerSideController {
 		}
 		
 		result.put("id", "1");
-		result.put("log", content);
+		result.put("log", content.toString());
 		return result;
 	}
 	
-	@RequestMapping(value = "/apps/{app_id}/info", method = RequestMethod.POST)
-	public String getOneDomainInfo(@PathVariable("app_id") String app_id)
-	{
-		HashMap<String, String> retMap = this.getDomainInfo(app_id);
+	/**
+	 * ping & Pong 
+	 */
+	@RequestMapping(value = "/ping", method = RequestMethod.GET)
+	public String ping() {
+		return "pong";
+	}
+	
+	/*@RequestMapping(value = "/apps/{app_id}/info", method = RequestMethod.POST)
+	public String getOneDomainInfo(@PathVariable("app_id") String appId) {
+		HashMap<String, String> retMap = this.getDomainInfo(appId);
 		if(retMap.get("RESULT").equals("FAIL")) return retMap.get("MSG");
-		
 		return retMap.get("RES_JSON");
 	}
 	
 	@RequestMapping(value = "/apps/infos", method = RequestMethod.GET)
-	public String getDomainInfos() 
-	{
-		String[] ids = this.readPropertiesArray(this.env, "apps.id");
+	public String getDomainInfos()  {
+		String[] ids = this.getPropertiesByKey(this.env, "apps.id");
 		
-		if(ids == null || ids.length == 0)
-		{
+		if(ids == null || ids.length == 0) {
 			return "Domain Id Not Found !";
 		}
 		
 		
 		JSONArray array = new JSONArray();
 		
-		for(int i = 0 ; i < ids.length ; i++){
+		for(int i = 0 ; i < ids.length ; i++) {
 			HashMap<String, String> retMap = this.getDomainInfo(ids[i]);
 			if(retMap.get("RESULT").equals("FAIL")) return retMap.get("MSG");
 			array.put(new JSONObject(retMap.get("RES_JSON")));
@@ -195,35 +240,19 @@ public class ServerSideController {
 		
 		JSONObject resObj = new JSONObject();
 		resObj.put("items", array);
-		
 		return resObj.toString();
 	}
 	
-	/**
-	 * Ping pong 
-	 */
-	@RequestMapping(value = "/ping", method = RequestMethod.GET)
-	public String ping(){
-		return "OK";
-	}
-	
-	
-	/**
-	 * ������ ������ ���� ��������
-	 * @param app_id
-	 * @return
-	 */
-	private HashMap<String,String> getDomainInfo(String app_id) {
+	private HashMap<String, String> getDomainInfo(String app_id) {
 		HashMap<String,String> pMap = this.checkProperties(app_id, "info");
 		if(pMap.get("RESULT").equals("FAIL")) return pMap;
 		
 		String url = "http://localhost:" + pMap.get("PORT") + "/info";
-
 		BufferedReader brIn = null;
 		InputStreamReader isr = null;
 		StringBuffer resStr = null;
 		
-		try{
+		try {
 			URL obj = new URL(url);
 			HttpURLConnection con = (HttpURLConnection) obj.openConnection();
 			int responseCode = con.getResponseCode();
@@ -243,18 +272,19 @@ public class ServerSideController {
 			while ((inputLine = brIn.readLine()) != null) {
 				resStr.append(inputLine);
 			}
-		}catch(Exception e){
+		} catch(Exception e) {
 			pMap.put("RESULT", "FAIL");
 			pMap.put("MSG", "Error : \n\n" + e.getMessage());
 			return pMap;
-		}finally {
-			if(brIn != null){
+			
+		} finally {
+			if(brIn != null) {
 				try {
 					brIn.close();
 				} catch (Exception e) {
 				}
 			}
-			if(isr != null){
+			if(isr != null) {
 				try {
 					isr.close();
 				} catch (Exception e) {
@@ -264,13 +294,13 @@ public class ServerSideController {
 		
 		JSONObject resJson = new JSONObject(resStr.toString());
 		resJson.put("id", app_id);
-
 		pMap.put("RES_JSON", resJson.toString());
 		return pMap;
-	}
+	}*/
 
 	/**
-	 * Batch ���� ����
+	 * Command 실행 
+	 * 
 	 * @param Path
 	 * @throws Exception
 	 */
@@ -286,20 +316,19 @@ public class ServerSideController {
 	}
 	
 	/**
-	 * �� ��ġ �۾��� �ʿ��� Property ���� Ȯ��
-	 * @param app_id 
-	 * @param batchCode
+	 * appId별 actionCode에 대응하는 프로퍼티를 찾아 리턴  
+	 * 
+	 * @param appId 
+	 * @param actionCode
 	 * @return HashMap
-	 *         RESULT : Ȯ�� ���
-	 *         MSG : ���� �޽���
-	 *         PATH : �ش� �۾��� ó���� Batch ���� ���
+	 *         RESULT : 성공 혹은 실패 
+	 *         MSG : 실패시 에러 메시지 
+	 *         PATH : 액션 코드별 값  
 	 */
-	private HashMap<String, String> checkProperties(String app_id, String batchCode){
+	private HashMap<String, String> checkProperties(String appId, String actionCode) {
 		HashMap<String, String> retMap = new HashMap<String, String>();
-
     	retMap.put("RESULT", "SUCCESS");
-
-        String[] ids = this.readPropertiesArray(this.env, "apps.id");
+        String[] ids = this.getPropertiesByKey(this.env, "apps.id");
         
         if(ids == null) {
         	retMap.put("RESULT", "FAIL");
@@ -308,33 +337,35 @@ public class ServerSideController {
         }
         
 		boolean isExists = false;
-		for(String id : ids){
-			if(id.equals(app_id)) isExists = true;
+		for(String id : ids) {
+			if(id.equals(appId)) {
+				isExists = true;
+				break;
+			}
 		}
 		
-		if(isExists == false){
+		if(isExists == false) {
         	retMap.put("RESULT", "FAIL");
         	retMap.put("MSG", this.getReturnMsg(3));
         	return retMap;
 		}
 		
 		
-		if(batchCode.equals("info")){
-			String port = this.env.getProperty(app_id + ".port");
+		if(actionCode.equals("info")) {
+			String port = this.env.getProperty(appId + ".port");
 			
-			if(port == null || port.isEmpty())
-			{
+			if(port == null || port.isEmpty()) {
 	        	retMap.put("RESULT", "FAIL");
 	        	retMap.put("MSG", this.getReturnMsg(5));
 	        	return retMap;
 			}
 			
 			retMap.put("PORT", port);
-		}else {
-			String path = this.env.getProperty(app_id + "." + batchCode + ".path");
 			
-			if(path == null || path.isEmpty())
-			{
+		} else {
+			String path = this.env.getProperty(appId + "." + actionCode + ".path");
+			
+			if(path == null || path.isEmpty()) {
 	        	retMap.put("RESULT", "FAIL");
 	        	retMap.put("MSG", this.getReturnMsg(4));
 	        	return retMap;
@@ -347,33 +378,47 @@ public class ServerSideController {
 	}
 
 	/**
-	 * Properties ���� key �� �ش��ϴ� String �迭�� �����´�
+	 * Properties 파일에서 key에 해당하는 데이터를 읽어 Array로 리턴 
+	 * 
 	 * @param _properties
 	 * @param key
 	 * @return String[]
 	 */
-	private String[] readPropertiesArray(Environment _properties, String key){
+	private String[] getPropertiesByKey(Environment _properties, String key) {
 		String readValue = _properties.getProperty(key);
 		
-		if(readValue == null) return null;
+		if(readValue == null) {
+			return null;
+		}
+		
 		return readValue.split(",");
 	}
 	
-	private String getReturnMsg(int code){
+	/**
+	 * 에러 코드별 리턴 메시지를 리턴한다.
+	 * 
+	 * @param code
+	 * @return
+	 */
+	private String getReturnMsg(int code) {
 		String msg = "";
-		if(code == 1){
+		
+		if(code == 1) {
 			msg = "Can Not Read The Properties File!";
-		} else if(code == 2){
-			msg = "Can Not Find Application ID Properties !" ;
-		} else if(code == 3){
+			
+		} else if(code == 2) {
+			msg = "Can Not Find Application ID Properties!";
+			
+		} else if(code == 3) {
 			msg = "Wrong Application ID!";
-		} else if(code == 4){
-			msg = "Can Not Find Application Batch Path !";
-		} else if(code == 5){
-			msg = "Can Not Find Application Port No !";
+			
+		} else if(code == 4) {
+			msg = "Can Not Find Application Batch Path!";
+			
+		} else if(code == 5) {
+			msg = "Can Not Find Application Port No!";
 		}
 		
 		return msg;
 	}
-	
 }
