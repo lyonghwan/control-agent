@@ -13,6 +13,7 @@ import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -145,29 +146,43 @@ public class AgentController {
 	 * @param appId
 	 * @return
 	 */
-	private String getLogFilePath(String appId) {
+	private String getLogFilePath(String appId, boolean first) {
 		HashMap<String, String> pMap = this.checkProperties(appId, "log");
 		
-		if (pMap.get("RESULT").equals("FAIL"))
+		if (pMap.get("RESULT").equals("FAIL")) {
 			throw new RuntimeException(pMap.get("MSG"));
-
-		String path = pMap.get("PATH");
-		Date today = new Date();
-		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+		}
 		
+		String path = pMap.get("PATH");
+		Date today = null; 
+		
+		// 첫번째 오늘 날짜 두번째 어제 날짜
+		if(first) {
+			today = new Date();
+			
+		} else {
+			Calendar c = Calendar.getInstance(); 
+			c.setTime(new Date()); 
+			c.add(Calendar.DATE, -1);
+			today = c.getTime();
+		}
+		
+		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
 		StringBuffer logPath = new StringBuffer();
-		logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? "" : FILE_SEPARATOR).append(LOG_FILENAME)
-				.append(sdf.format(today)).append(LOG_FILE_EXT);
+		logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? "" : FILE_SEPARATOR).append(LOG_FILENAME).append(sdf.format(today)).append(LOG_FILE_EXT);
 
 		File file = new File(logPath.toString());
 		if (!file.exists()) {
 			logPath = new StringBuffer();
-			logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? "" : FILE_SEPARATOR).append(LOG_FILENAME_2)
-					.append(sdf.format(today)).append(LOG_FILE_EXT);
+			logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? "" : FILE_SEPARATOR).append(LOG_FILENAME_2).append(sdf.format(today)).append(LOG_FILE_EXT);
 			file = new File(logPath.toString());
 
 			if (!file.exists()) {
-				throw new RuntimeException("Log File (" + logPath.toString() + ") Not Found!");
+				if(first) { 
+					return this.getLogFilePath(appId, false);
+				} else {
+					throw new RuntimeException("Log File (" + logPath.toString() + ") Not Found!");
+				}
 			}
 		}
 
@@ -186,7 +201,7 @@ public class AgentController {
 			@PathVariable("app_id") String appId,
 			@RequestParam(name = "lines", required = false) Integer lines) {
 		
-		String logPath = this.getLogFilePath(appId);
+		String logPath = this.getLogFilePath(appId, true);
 		String content = (lines == null || lines == 0) ? 
 						 this.readAllLines(logPath) : 
 						 this.readLastLines(new File(logPath), lines);
@@ -205,7 +220,7 @@ public class AgentController {
 	 */
 	@RequestMapping(value = "/apps/{app_id}/download_log", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public boolean downloadLog(HttpServletRequest req, HttpServletResponse res, @PathVariable("app_id") String appId) {
-		String logPath = this.getLogFilePath(appId);
+		String logPath = this.getLogFilePath(appId, true);
 		File file = new File(logPath);
 		
 		res.setCharacterEncoding("UTF-8");
@@ -237,7 +252,7 @@ public class AgentController {
 			} while(true);
 
 		} catch (Exception e) {
-			throw new RuntimeException("File Download Exception!", e);
+			throw new RuntimeException("Failed to File Download!", e);
 			
 		} finally {
 			try {
