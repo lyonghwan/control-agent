@@ -330,7 +330,12 @@ public class AgentController {
 			int counter = 0;
 
 			while(counter < lines) {
-				temp = rlfr.readLine();
+				try {
+					temp = rlfr.readLine();
+				} catch (NullPointerException npe) {
+					break;
+				}
+				
 				if(temp != null) {
 					builder.insert(0, temp + "\n");
 					counter++;
