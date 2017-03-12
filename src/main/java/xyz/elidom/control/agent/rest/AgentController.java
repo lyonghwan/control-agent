@@ -6,9 +6,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
@@ -51,8 +48,124 @@ public class AgentController {
 	private static final String LOG_FILE_EXT = ".log";
 
 	@Autowired
-	Environment env;
+	private Environment env;
+	/**
+	 * Index Information
+	 */
+	private Map<String, Object> indexInfo = new HashMap<String, Object>();
 
+	/**
+	 * Elidom Control Agent Index URL 
+	 */
+	@RequestMapping(method = RequestMethod.GET)
+	public Map<String, Object> index() {
+		
+		if(indexInfo.isEmpty()) {
+			indexInfo.put("Application", "Elidom Control Agent");
+			indexInfo.put("Version", "1.0");
+			
+			Map<String, Object> urlInfo = new HashMap<String, Object>();
+			urlInfo.put("Application Start By AppId", "/apps/{app_id}/start:POST");
+			urlInfo.put("Application Restart By AppId", "/apps/{app_id}/restart:POST");
+			urlInfo.put("Application Stop By AppId", "/apps/{app_id}/stop:POST");
+			urlInfo.put("Application Deploy By AppId", "/apps/{app_id}/deploy:POST");
+			urlInfo.put("Application View Log By AppId", "/apps/{app_id}/log:GET");
+			urlInfo.put("Application Download Log By AppId", "/apps/{app_id}/download_log:GET");
+			urlInfo.put("Control Agent Health Check", "/ping:GET");
+			urlInfo.put("View Application Informations", "/apps/infos:GET");
+			urlInfo.put("View Application Information By AppId", "/apps/{app_id}/info:GET");
+			
+			indexInfo.put("apis", urlInfo);
+		}
+		
+		return indexInfo;
+	}
+	
+	/**
+	 * ping & pong
+	 */
+	@RequestMapping(value = "/ping", method = RequestMethod.GET)
+	public String ping() {
+		return "pong";
+	}
+
+	/**
+	 * Control Agent가 관리하는 모든 애플리케이션 요약 정보를 리턴 
+	 * 
+	 * @return
+	 */
+	@RequestMapping(value = "/apps/infos", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
+	public List<Object> getAppInfos() {
+		String[] ids = this.getPropertiesByKey(this.env, "apps.id");
+
+		if (ids == null || ids.length == 0) {
+			throw new RuntimeException("Application Id is empty!");
+		}
+
+		List<Object> apps = new ArrayList<Object>();
+
+		for (int i = 0; i < ids.length; i++) {
+			Map<String, Object> appInfo = this.getAppInfo(ids[i]);
+			if(appInfo != null && !appInfo.isEmpty()) {
+				apps.add(appInfo);
+			}
+		}
+
+		return apps;
+	}
+
+	/**
+	 * Control Agent가 관리하는 모든 애플리케이션 중 appId에 해당하는 애플리케이션 요약 정보를 리턴 
+	 * 
+	 * @param appId
+	 * @return
+	 */
+	@RequestMapping(value = "/apps/{app_id}/info", method = RequestMethod.GET)
+	private Map<String, Object> getAppInfo(@PathVariable("app_id") String appId) {
+		Map<String, String> props = this.checkProperties(appId, "info");
+		
+		RestTemplate rest = new RestTemplate();
+		String appPort = props.get("PORT");
+		String url = this.getAgentUrl(appPort, "info");
+		Map<String, Object> appInfo = new HashMap<String, Object>();
+		
+		try {
+			Map<?, ?> result = rest.getForObject(url, Map.class, appInfo);
+			String appStage = (String)result.get("stage");
+			String appTitle = (String)result.get("name");
+			
+			appInfo.put("id", appId);
+			appInfo.put("name", appTitle);
+			appInfo.put("port", appPort);
+			appInfo.put("stage", appStage);
+			
+			url = this.getAgentUrl(appPort, "health");
+			try {
+				Map<?, ?> status = rest.getForObject(url, Map.class, new HashMap<String, Object>());
+				appInfo.put("status", status.get("status"));
+			} catch(Exception e) {
+				appInfo.put("status", "DOWN");
+			}
+			
+		} catch (Exception e) {
+			this.logger.error("Failed to get information of app [" + appId + "]", e);
+			return null;
+		}
+		
+		return appInfo;
+	}
+	
+	/**
+	 * Agent URL를 리턴 
+	 * 
+	 * @param appPort
+	 * @param api
+	 * @return
+	 */
+	private String getAgentUrl(String appPort, String api) {
+		return "http://localhost:" + appPort + "/" + api;
+	}
+	
 	/**
 	 * Application Start
 	 * 
@@ -62,8 +175,6 @@ public class AgentController {
 	@RequestMapping(value = "/apps/{app_id}/start", method = RequestMethod.POST)
 	public String startBoot(@PathVariable("app_id") String appId) {
 		HashMap<String, String> pMap = this.checkProperties(appId, "start");
-		if (pMap.get("RESULT").equals("FAIL"))
-			return pMap.get("MSG");
 
 		try {
 			this.commandStart(pMap.get("PATH"));
@@ -71,7 +182,7 @@ public class AgentController {
 			return "Error : \n\n" + e.getMessage();
 		}
 
-		return "Enterd Startup Command SUCCESS";
+		return "Entered Startup Command SUCCESS";
 	}
 
 	/**
@@ -117,7 +228,7 @@ public class AgentController {
 	 * @param appId
 	 * @return execute message
 	 */
-	@RequestMapping(value = "/apps/{app_id}/udpate", method = RequestMethod.POST)
+	@RequestMapping(value = "/apps/{app_id}/deploy", method = RequestMethod.POST)
 	public String deploy(@PathVariable("app_id") String appId) {
 		this.stopBoot(appId);
 
@@ -127,8 +238,6 @@ public class AgentController {
 		}
 
 		HashMap<String, String> pMap = this.checkProperties(appId, "update");
-		if (pMap.get("RESULT").equals("FAIL"))
-			return pMap.get("MSG");
 
 		try {
 			this.commandStart(pMap.get("PATH"));
@@ -147,12 +256,7 @@ public class AgentController {
 	 * @return
 	 */
 	private String getLogFilePath(String appId, boolean first) {
-		HashMap<String, String> pMap = this.checkProperties(appId, "log");
-		
-		if (pMap.get("RESULT").equals("FAIL")) {
-			throw new RuntimeException(pMap.get("MSG"));
-		}
-		
+		HashMap<String, String> pMap = this.checkProperties(appId, "log");		
 		String path = pMap.get("PATH");
 		Date today = null; 
 		
@@ -355,108 +459,6 @@ public class AgentController {
 	}
 
 	/**
-	 * ping & pong
-	 */
-	@RequestMapping(value = "/ping", method = RequestMethod.GET)
-	public String ping() {
-		return "pong";
-	}
-
-	@SuppressWarnings("unchecked")
-	@RequestMapping(value = "/apps/{app_id}/info", method = RequestMethod.GET)
-	public Map<String, Object> getOneDomainInfo(@PathVariable("app_id") String appId) {
-		Map<String, Object> appInfo = (Map<String, Object>) this.getAppInfo(appId);
-
-		if (appInfo.get("RESULT").equals("FAIL")) {
-			return appInfo;
-		}
-
-		return appInfo;
-	}
-
-	@SuppressWarnings({ "rawtypes", "unchecked" })
-	@RequestMapping(value = "/apps/infos", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
-	public Map<String, Object> getAppInfos() {
-		String[] ids = this.getPropertiesByKey(this.env, "apps.id");
-		Map<String, Object> result = new HashMap<String, Object>();
-
-		if (ids == null || ids.length == 0) {
-			result.put("RESULT", "FAIL");
-			result.put("MSG", "Application Id Not Found !");
-			return result;
-		}
-
-		List apps = new ArrayList();
-
-		for (int i = 0; i < ids.length; i++) {
-			Map<String, Object> itemObj = (Map<String, Object>) this.getAppInfo(ids[i]);
-			if (itemObj.get("RESULT").equals("FAIL")) {
-				return itemObj;
-			}
-
-			apps.add(itemObj.get("RES_JSON"));
-		}
-
-		result.put("items", apps);
-		return result;
-	}
-
-	private Object getAppInfo(String appId) {
-		Map<String, String> pMap = this.checkProperties(appId, "info");
-		if (pMap.get("RESULT").equals("FAIL")) {
-			return pMap;
-		}
-
-		String url = "http://localhost:" + pMap.get("PORT") + "/info";
-		BufferedReader brIn = null;
-		InputStreamReader isr = null;
-		StringBuffer resStr = null;
-
-		try {
-			URL obj = new URL(url);
-			HttpURLConnection con = (HttpURLConnection) obj.openConnection();
-			int responseCode = con.getResponseCode();
-
-			if (responseCode == 401) {
-				pMap.put("RESULT", "FAIL");
-				pMap.put("MSG", "Unauthorized Request !");
-				return pMap;
-			}
-
-			isr = new InputStreamReader(con.getInputStream());
-			brIn = new BufferedReader(isr);
-
-			String inputLine;
-			resStr = new StringBuffer();
-
-			while ((inputLine = brIn.readLine()) != null) {
-				resStr.append(inputLine);
-			}
-		} catch (Exception e) {
-			pMap.put("RESULT", "FAIL");
-			pMap.put("MSG", "Error : \n\n" + e.getMessage());
-			return pMap;
-
-		} finally {
-			if (brIn != null) {
-				try {
-					brIn.close();
-				} catch (Exception e) {
-				}
-			}
-			if (isr != null) {
-				try {
-					isr.close();
-				} catch (Exception e) {
-				}
-			}
-		}
-
-		pMap.put("RES_JSON", resStr.toString());
-		return pMap;
-	}
-
-	/**
 	 * Command 실행
 	 * 
 	 * @param path
@@ -486,9 +488,7 @@ public class AgentController {
 		String[] ids = this.getPropertiesByKey(this.env, "apps.id");
 
 		if (ids == null) {
-			retMap.put("RESULT", "FAIL");
-			retMap.put("MSG", this.getReturnMsg(2));
-			return retMap;
+			throw new RuntimeException("Failed to get app information! - " + this.getReturnMsg(1));
 		}
 
 		boolean isExists = false;
@@ -500,18 +500,14 @@ public class AgentController {
 		}
 
 		if (isExists == false) {
-			retMap.put("RESULT", "FAIL");
-			retMap.put("MSG", this.getReturnMsg(3));
-			return retMap;
+			throw new RuntimeException("Failed to get app information! - " + this.getReturnMsg(3));
 		}
 
 		if (actionCode.equals("info")) {
 			String port = this.env.getProperty(appId + ".port");
 
 			if (port == null || port.isEmpty()) {
-				retMap.put("RESULT", "FAIL");
-				retMap.put("MSG", this.getReturnMsg(5));
-				return retMap;
+				throw new RuntimeException("Failed to get app information! - " + this.getReturnMsg(5));
 			}
 
 			retMap.put("PORT", port);
@@ -520,9 +516,7 @@ public class AgentController {
 			String path = this.env.getProperty(appId + "." + actionCode + ".path");
 
 			if (path == null || path.isEmpty()) {
-				retMap.put("RESULT", "FAIL");
-				retMap.put("MSG", this.getReturnMsg(4));
-				return retMap;
+				throw new RuntimeException("Failed to get app information! - " + this.getReturnMsg(4));
 			}
 
 			retMap.put("PATH", path);
