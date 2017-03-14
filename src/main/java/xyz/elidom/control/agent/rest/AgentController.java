@@ -127,31 +127,31 @@ public class AgentController {
 		RestTemplate rest = new RestTemplate();
 		String appPort = props.get("PORT");
 		String url = this.getAgentUrl(appPort, "info");
+		
 		Map<String, Object> appInfo = new HashMap<String, Object>();
+		appInfo.put("id", appId);
+		appInfo.put("port", appPort);
 		
 		try {
 			Map<?, ?> result = rest.getForObject(url, Map.class, appInfo);
 			String appStage = (String)result.get("stage");
 			String appTitle = (String)result.get("name");
-			
-			appInfo.put("id", appId);
 			appInfo.put("name", appTitle);
-			appInfo.put("port", appPort);
 			appInfo.put("stage", appStage);
 			
-			url = this.getAgentUrl(appPort, "health");
-			try {
-				Map<?, ?> status = rest.getForObject(url, Map.class, new HashMap<String, Object>());
-				appInfo.put("status", status.get("status"));
-			} catch(Exception e) {
-				appInfo.put("status", "DOWN");
-			}
-			
-		} catch (Exception e) {
-			this.logger.error("Failed to get information of app [" + appId + "]", e);
-			return null;
+		} catch(Exception e) {
+			appInfo.put("status", "DOWN");
+			return appInfo;
 		}
 		
+		url = this.getAgentUrl(appPort, "health");
+		try {
+			Map<?, ?> status = rest.getForObject(url, Map.class, new HashMap<String, Object>());
+			appInfo.put("status", status.get("status"));
+		} catch(Exception e) {
+			appInfo.put("status", "DOWN");
+		}
+					
 		return appInfo;
 	}
 	
