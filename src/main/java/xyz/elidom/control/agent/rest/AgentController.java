@@ -11,6 +11,7 @@ import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -65,15 +66,20 @@ public class AgentController {
 			indexInfo.put("Version", "1.0");
 			
 			Map<String, Object> urlInfo = new HashMap<String, Object>();
+			urlInfo.put("Control Agent Health Check", "/ping:GET");
 			urlInfo.put("Application Start By AppId", "/apps/{app_id}/start:POST");
 			urlInfo.put("Application Restart By AppId", "/apps/{app_id}/restart:POST");
 			urlInfo.put("Application Stop By AppId", "/apps/{app_id}/stop:POST");
 			urlInfo.put("Application Deploy By AppId", "/apps/{app_id}/deploy:POST");
-			urlInfo.put("Application View Log By AppId", "/apps/{app_id}/log:GET");
-			urlInfo.put("Application Download Log By AppId", "/apps/{app_id}/download_log:GET");
-			urlInfo.put("Control Agent Health Check", "/ping:GET");
+			urlInfo.put("Application View Today's Log By AppId", "/apps/{app_id}/log/today/read:GET");
+			urlInfo.put("Application Log File List By AppId", "/apps/{app_id}/log/files:GET");
+			urlInfo.put("Application Download Today's Log By AppId", "/apps/{app_id}/log/today/download:GET");
+			urlInfo.put("Application View Log By AppId, Log File Name", "/apps/{app_id}/log/{file_name}/read:GET");
+			urlInfo.put("Application Delete File By AppId, Log File Name", "/apps/{app_id}/log/{file_name}/delete:DELETE");
+			urlInfo.put("Application Download Log By AppId, Log File Name", "/apps/{app_id}/log/{file_name}/download:GET");
 			urlInfo.put("View Application Informations", "/apps/infos:GET");
 			urlInfo.put("View Application Information By AppId", "/apps/{app_id}/info:GET");
+			urlInfo.put("Redis Flushall By AppId", "/apps/{app_id}/redis_flushall:DELETE");
 			
 			indexInfo.put("apis", urlInfo);
 		}
@@ -167,6 +173,25 @@ public class AgentController {
 	}
 	
 	/**
+	 * Redis Flushall 
+	 * 
+	 * @param appId
+	 * @return execute message
+	 */
+	@RequestMapping(value = "/apps/{app_id}/redis_flushall", method = RequestMethod.DELETE)
+	public String redisFlushall(@PathVariable("app_id") String appId) {
+		HashMap<String, String> pMap = this.checkProperties(appId, "redisFlushall");
+		
+		try {
+			this.commandStart(pMap.get("PATH"));
+		} catch (Exception e) {
+			return "Error : \n\n" + e.getMessage();
+		}
+		
+		return "Entered Redis Flushall Command SUCCESS";
+	}
+	
+	/**
 	 * Application Start
 	 * 
 	 * @param appId
@@ -182,7 +207,7 @@ public class AgentController {
 			return "Error : \n\n" + e.getMessage();
 		}
 
-		return "Entered Startup Command SUCCESS";
+		return "Entered Startup Command SUCCESS";		
 	}
 
 	/**
@@ -200,7 +225,7 @@ public class AgentController {
 		}
 
 		try {
-			Thread.sleep(10000);
+			Thread.sleep(5000);
 		} catch (Exception e) {
 		}
 
@@ -233,7 +258,7 @@ public class AgentController {
 		this.stopBoot(appId);
 
 		try {
-			Thread.sleep(10000);
+			Thread.sleep(5000);
 		} catch (Exception e) {
 		}
 
@@ -256,7 +281,7 @@ public class AgentController {
 	 * @return
 	 */
 	private String getLogFilePath(String appId, boolean first) {
-		HashMap<String, String> pMap = this.checkProperties(appId, "log");		
+		HashMap<String, String> pMap = this.checkProperties(appId, "log");
 		String path = pMap.get("PATH");
 		Date today = null; 
 		
@@ -292,20 +317,94 @@ public class AgentController {
 
 		return logPath.toString();
 	}
-
+	
+	/**
+	 * Log File Path를 리턴
+	 * 
+	 * @param appId
+	 * @param fileName
+	 * @return
+	 */	
+	private String getLogFilePath(String appId, String fileName) {
+		HashMap<String, String> pMap = this.checkProperties(appId, "log");
+		String path = pMap.get("PATH");
+		if(!path.endsWith(FILE_SEPARATOR)) {
+			return path + FILE_SEPARATOR + fileName;
+		} else {
+			return path + fileName;
+		}
+	}
+	
+	/**
+	 * 로그 파일 리스트 
+	 * 
+	 * @param appId
+	 * @return
+	 */
+	@RequestMapping(value = "/apps/{app_id}/log/files", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
+	public List<Map<String, Object>> logFileList(@PathVariable("app_id") String appId) {
+		HashMap<String, String> pMap = this.checkProperties(appId, "log");
+		String path = pMap.get("PATH");
+		File logDir = new File(path);
+		List<Map<String, Object>> fileList = new ArrayList<Map<String, Object>>();
+		
+		if(logDir.isDirectory()) {
+			File[] logFiles = logDir.listFiles();
+			for(File logFile : logFiles) {
+				String fileName = logFile.getName();
+				if(fileName.endsWith(".log")) {
+					String logPath = logFile.getAbsolutePath();
+					Long fileSize = logFile.length();
+					Map<String, Object> logData = new HashMap<String, Object>(3);
+					logData.put("id", logPath);
+					logData.put("name", fileName);
+					logData.put("size", fileSize);
+					fileList.add(logData);
+				}
+			}
+		}
+		
+		fileList.sort(new LogFileComparator());
+		return fileList;
+	}
+	
+	/**
+	 * 로그 파일 삭제  
+	 * 
+	 * @param appId
+	 * @param fileName
+	 * @return
+	 */
+	@RequestMapping(value = "/apps/{app_id}/log/{file_name}/delete", method = RequestMethod.DELETE, produces = MediaType.APPLICATION_JSON_VALUE)
+	public Boolean deleteFileList(@PathVariable("app_id") String appId, @PathVariable("file_name") String fileName) {
+		String filePath = this.getLogFilePath(appId, fileName);
+		File logFile = new File(filePath);
+		
+		if(logFile.exists() && logFile.isFile()) {
+			logFile.delete();
+		}
+		
+		return true;
+	}
+	
 	/**
 	 * 로그 파일을 읽어서 내용을 리턴
 	 * 
 	 * @param appId
+	 * @param fileName
 	 * @param lines
-	 * @return 오늘의 로그의 내용을 리턴 
+	 * @return 로그 파일의 내용을 읽어서 리턴  
 	 */
-	@RequestMapping(value = "/apps/{app_id}/log", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
+	@RequestMapping(value = "/apps/{app_id}/log/{file_name}/read", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public Map<String, String> readLog(
 			@PathVariable("app_id") String appId,
+			@PathVariable("file_name") String fileName,
 			@RequestParam(name = "lines", required = false) Integer lines) {
 		
-		String logPath = this.getLogFilePath(appId, true);
+		String logPath = (fileName != null) ? 
+				this.getLogFilePath(appId, fileName) : 
+				this.getLogFilePath(appId, true);
+				
 		String content = (lines == null || lines == 0) ? 
 						 this.readAllLines(logPath) : 
 						 this.readLastLines(new File(logPath), lines);
@@ -313,18 +412,35 @@ public class AgentController {
 		Map<String, String> result = new HashMap<String, String>();
 		result.put("id", "1");
 		result.put("log", content);
-		return result;
+		return result;		
+	}
+
+	/**
+	 * 오늘의 로그 파일을 읽어서 내용을 리턴
+	 * 
+	 * @param appId
+	 * @param lines
+	 * @return 오늘의 로그의 내용을 리턴 
+	 */
+	@RequestMapping(value = "/apps/{app_id}/log/today/read", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
+	public Map<String, String> readTodayLog(
+			@PathVariable("app_id") String appId,
+			@RequestParam(name = "lines", required = false) Integer lines) {
+		return this.readLog(appId, null, lines);
 	}
 	
 	/**
 	 * 로그 파일을 다운로드 
 	 * 
 	 * @param appId
-	 * @return 오늘의 로그의 내용을 리턴 
+	 * @param fileName
+	 * @return filePath에 해당하는 로그의 내용을 리턴 
 	 */
-	@RequestMapping(value = "/apps/{app_id}/download_log", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
-	public boolean downloadLog(HttpServletRequest req, HttpServletResponse res, @PathVariable("app_id") String appId) {
-		String logPath = this.getLogFilePath(appId, true);
+	@RequestMapping(value = "/apps/{app_id}/log/{file_name}/download", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
+	public boolean downloadLog(HttpServletRequest req, HttpServletResponse res, @PathVariable("app_id") String appId, @PathVariable("file_name") String fileName) {
+		String logPath = (fileName != null) ? 
+				this.getLogFilePath(appId, fileName) : 
+				this.getLogFilePath(appId, true);
 		File file = new File(logPath);
 		
 		res.setCharacterEncoding("UTF-8");
@@ -371,6 +487,17 @@ public class AgentController {
 		}
 		
 		return true;		
+	}
+	
+	/**
+	 * 로그 파일을 다운로드 
+	 * 
+	 * @param appId
+	 * @return 오늘의 로그의 내용을 리턴 
+	 */
+	@RequestMapping(value = "/apps/{app_id}/log/today/download", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
+	public boolean downloadLog(HttpServletRequest req, HttpServletResponse res, @PathVariable("app_id") String appId) {
+		return this.downloadLog(req, res, appId, null);
 	}
 	
 	/**
@@ -565,8 +692,25 @@ public class AgentController {
 
 		} else if (code == 5) {
 			msg = "Can Not Find Application Port No!";
+			
+		} else if (code == 6) {
+			msg = "Can Not Find Property";
 		}
 
 		return msg;
+	}
+	
+	/**
+	 * Log File Comparator
+	 * 
+	 * @author shortstop
+	 */
+	class LogFileComparator implements Comparator<Map<String, Object>> {
+		@Override
+		public int compare(Map<String, Object> data1, Map<String, Object> data2) {
+			String name1 = data1.get("name").toString();
+			String name2 = data2.get("name").toString();
+			return name1.compareTo(name2);
+		}
 	}
 }
