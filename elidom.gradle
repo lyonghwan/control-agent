@@ -1,0 +1,150 @@
+import java.net.URL;
+import java.net.URLConnection;
+import java.util.Base64;
+import java.text.SimpleDateFormat;
+import javax.xml.parsers.DocumentBuilderFactory;
+import org.w3c.dom.Document;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+apply plugin: 'java'
+apply plugin: 'maven'
+apply plugin: 'eclipse'
+	
+version = '1.4.4'
+sourceCompatibility = 1.8
+compileJava.options.encoding = 'UTF-8'
+
+ext {
+	groupId = "com.hatiolab"
+	artifactId = project.name
+	
+	userName = "admin";
+	password = "elidom";
+}
+
+configurations {
+	provided.all*.exclude group: 'javax.servlet'
+}
+
+task setCurrentVersion() {
+	version = getVersion(false);
+}
+
+task snapshot() {
+	if(!isTask("snapshot")) {
+		return;
+	}
+	
+	version = version + "-SNAPSHOT";
+}
+
+uploadArchives {
+	if(!isTask("upload, uploadArchives")) {
+		return;
+	}
+
+	def repositoryURL;
+	
+	if(isTask("snapshot")) {
+		repositoryURL = baseUrl + "/repositories/snapshots/";
+	} else if(isTask("build")) {
+		repositoryURL = baseUrl + "/repositories/jar_deployed/";
+	} else {
+		setNextVersion()
+		repositoryURL = baseUrl + "/repositories/hatiolab/";
+	}
+	
+	repositories {
+		mavenDeployer {
+			repository(url: repositoryURL) {
+				authentication (userName: userName, password: password)
+			}
+			pom.version = version
+			pom.groupId = groupId
+			pom.artifactId = artifactId
+		}
+	}
+	
+	println version
+}
+
+/*********************************************
+ * Function
+ *********************************************/
+
+/**
+ * Set next Version
+ */
+def setNextVersion() {
+	version = getVersion(true);
+}
+
+def getVersion(isNextVersion) {
+	try {
+		String rootPath = baseUrl + "/repositories";
+		String repositoryName = "hatiolab";
+		String groupId = this.groupId;
+		String artifactId = this.artifactId;
+		String metaFileName = "maven-metadata.xml";
+	
+		// http://repo.hatiolab.com/nexus/content/repositories/jar_deployed/com/hatiolab/elidom-base/maven-metadata.xml
+		StringJoiner path = new StringJoiner("/");
+		path.add(rootPath).add(repositoryName).add(groupId.replace(".", "/")).add(artifactId).add(metaFileName);
+	
+		URL url = new URL(path.toString());
+		URLConnection connection = url.openConnection();
+	
+		String userpass = userName + ":" + password;
+		String basicAuth = "Basic " + new String(Base64.getEncoder().encode(userpass.getBytes()));
+	
+		connection.setRequestProperty("Authorization", basicAuth);
+		connection.setRequestProperty("X-Requested-With", "Curl");
+	
+		Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(connection.getInputStream());
+		NodeList descNodes = doc.getElementsByTagName("versioning");
+	
+		for (int i = 0; i < descNodes.getLength(); i++) {
+			// 첫번째 자식을 시작으로 마지막까지 다음 형제를 실행
+			for (Node node = descNodes.item(i).getFirstChild(); node != null; node = node.getNextSibling()) {
+				if (node.getNodeName().equals("release")) {
+					String currentVersion = node.getTextContent();
+					if (currentVersion.split("\\.").length == 3) {
+						version = currentVersion;
+					}
+					break;
+				}
+			}
+		}
+	
+		String[] versionInfo = version.split("\\.");
+		int majorVersion = Integer.parseInt(versionInfo[0]);
+		int minorVersion = Integer.parseInt(versionInfo[1]);
+		// int pointVersion = Integer.parseInt(versionInfo[2]);
+		int buildVersion = Integer.parseInt(versionInfo[2]);
+		if(isNextVersion) {
+			++buildVersion
+		}
+		
+		version = majorVersion + "." + minorVersion + "." + buildVersion;
+	} catch(Exception e) {
+		return version;
+	}
+}
+
+/**
+ * Check Task
+ */
+def isTask(taskNames) {
+	def checkTaskNames = taskNames.split(",");
+	def exeTasks = project.gradle.startParameter.taskNames;
+	
+	for(def checkTask : checkTaskNames) {
+		for(def exeTask : exeTasks) {
+			if(exeTask.equalsIgnoreCase(checkTask.trim())) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
