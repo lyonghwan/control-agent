@@ -8,6 +8,7 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -29,6 +30,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -283,27 +285,16 @@ public class AgentController {
 	private String getLogFilePath(String appId, boolean first) {
 		HashMap<String, String> pMap = this.checkProperties(appId, "log");
 		String path = pMap.get("PATH");
-		Date today = null; 
 		
 		// 첫번째 오늘 날짜 두번째 어제 날짜
-		if(first) {
-			today = new Date();
-			
-		} else {
-			Calendar c = Calendar.getInstance(); 
-			c.setTime(new Date()); 
-			c.add(Calendar.DATE, -1);
-			today = c.getTime();
-		}
-		
-		SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+		Date today = first ? new Date() : this.getDate(new Date(), -1); 
 		StringBuffer logPath = new StringBuffer();
-		logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? "" : FILE_SEPARATOR).append(LOG_FILENAME).append(sdf.format(today)).append(LOG_FILE_EXT);
+		logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? "" : FILE_SEPARATOR).append(LOG_FILENAME).append(this.formatDate(today, null)).append(LOG_FILE_EXT);
 
 		File file = new File(logPath.toString());
 		if (!file.exists()) {
 			logPath = new StringBuffer();
-			logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? "" : FILE_SEPARATOR).append(LOG_FILENAME_2).append(sdf.format(today)).append(LOG_FILE_EXT);
+			logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? "" : FILE_SEPARATOR).append(LOG_FILENAME_2).append(this.formatDate(today, null)).append(LOG_FILE_EXT);
 			file = new File(logPath.toString());
 
 			if (!file.exists()) {
@@ -316,6 +307,56 @@ public class AgentController {
 		}
 
 		return logPath.toString();
+	}
+	
+	/**
+	 * date에 addDate를 더한 날짜를 리턴 
+	 * 
+	 * @param date
+	 * @param addDate
+	 * @return
+	 */
+	private Date getDate(Date date, int addDate) {
+		Calendar c = Calendar.getInstance(); 
+		c.setTime(date); 
+		c.add(Calendar.DATE, addDate);
+		Date newDate = c.getTime();
+		return newDate;
+	}
+	
+	/**
+	 * date 객체를 format으로 포매팅하여 리턴 
+	 * 
+	 * @param date
+	 * @param format
+	 * @return
+	 */
+	private String formatDate(Date date, String format) {
+		SimpleDateFormat sdf = new SimpleDateFormat(this.getDateFormat(format));
+		return sdf.format(date);
+	}
+	
+	/**
+	 * String format의 날짜 형식을 Date 형식으로 변환 
+	 * 
+	 * @param dateStr
+	 * @param format
+	 * @return
+	 * @throws ParseException
+	 */
+	private Date parseDate(String dateStr, String format) throws ParseException {
+		SimpleDateFormat formatter = new SimpleDateFormat(this.getDateFormat(format));
+		return formatter.parse(dateStr);
+	}
+	
+	/**
+	 * 데이트 포맷이 없다면 기본 데이트 포맷을 리턴 
+	 * 
+	 * @param format
+	 * @return
+	 */
+	private String getDateFormat(String format) {
+		return (format == null) ? "yyyy-MM-dd" : format;
 	}
 	
 	/**
@@ -366,6 +407,63 @@ public class AgentController {
 		
 		fileList.sort(new LogFileComparator());
 		return fileList;
+	}
+	
+	/**
+	 * 로그 파일을 유지할 날짜 수 - 이 날짜가 지난 파일은 자동 삭제된다.
+	 * 
+	 * @return
+	 */
+	private int getLogKeepDate() {
+		String keepDate = this.getPropertiesByKey(this.env, "apps.log.file.keep.date")[0];
+		return Integer.parseInt(keepDate) * -1;
+	}
+	
+	/**
+	 * 매일 23시(0 50 23 ? * *)50분에 오래된 로그 파일 삭제  
+	 */
+	//@Scheduled(fixedDelay=10000)
+	@Scheduled(cron = "0 50 23 ? * *")
+	public void deleteOldLogFiles() {
+		this.logger.info("==================================");
+		this.logger.info("Starting delete Old log files...");
+		this.logger.info("==================================");
+		
+		int keepDate = this.getLogKeepDate();
+		Date stdDate = this.getDate(new Date(), keepDate);
+		String[] ids = this.getPropertiesByKey(this.env, "apps.id");
+		
+		for(String appId : ids) {
+			List<Map<String, Object>> fileList = this.logFileList(appId);
+			for(Map<String, Object> fileInfo : fileList) {
+				String filePath = fileInfo.get("id").toString();
+				String dateStr = filePath.substring(filePath.indexOf(".") + 1, filePath.lastIndexOf("."));
+				Date logDate = null;
+				try {
+					logDate = this.parseDate(dateStr, null);
+				} catch (ParseException e) {
+					this.logger.error(e.getMessage(), e);
+					continue;
+				}
+
+				if(stdDate.getTime() > logDate.getTime()) {
+					File logFile = new File(filePath);
+					if(logFile.delete()) {
+						this.logger.info("================================================");
+						this.logger.info("File [" + filePath + "] Deleted");
+						this.logger.info("================================================");
+					} else {
+						this.logger.info("================================================");
+						this.logger.info("Failed to Delete Log File [" + filePath + "]");
+						this.logger.info("================================================");			
+					}					
+				}
+			}
+		}
+		
+		this.logger.info("==================================");
+		this.logger.info("Finished delete Old log files!");
+		this.logger.info("==================================");
 	}
 	
 	/**
