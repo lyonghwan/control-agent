@@ -25,7 +25,7 @@ compileJava.options.encoding = 'UTF-8'
 
 jar {	
     manifest {
-        attributes 'Implementation-Title': 'control-agent',
+        attributes 'Implementation-Title': 'Elidom-Control-Agent',
                    'Implementation-Version': version,
                    'Main-Class': 'xyz.elidom.control.agent.ElidomControlAgentApplication'
     }

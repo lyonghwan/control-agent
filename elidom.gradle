@@ -17,7 +17,7 @@ compileJava.options.encoding = 'UTF-8'
 
 ext {
 	groupId = "com.hatiolab"
-	artifactId = project.name
+	artifactId = "control-agent"
 	
 	userName = "admin";
 	password = "elidom";
