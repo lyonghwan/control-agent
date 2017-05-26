@@ -30,7 +30,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -148,6 +147,7 @@ public class AgentController {
 			appInfo.put("stage", appStage);
 			
 		} catch(Exception e) {
+			this.logger.error(e.getMessage(), e);
 			appInfo.put("status", "DOWN");
 			return appInfo;
 		}
@@ -157,6 +157,7 @@ public class AgentController {
 			Map<?, ?> status = rest.getForObject(url, Map.class, new HashMap<String, Object>());
 			appInfo.put("status", status.get("status"));
 		} catch(Exception e) {
+			this.logger.error(e.getMessage(), e);
 			appInfo.put("status", "DOWN");
 		}
 					
@@ -420,10 +421,8 @@ public class AgentController {
 	}
 	
 	/**
-	 * 매일 23시(0 50 23 ? * *)50분에 오래된 로그 파일 삭제  
+	 * 오래된 로그 파일 삭제  
 	 */
-	//@Scheduled(fixedDelay=10000)
-	@Scheduled(cron = "0 50 23 ? * *")
 	public void deleteOldLogFiles() {
 		this.logger.info("==================================");
 		this.logger.info("Starting delete Old log files...");
