@@ -15,6 +15,7 @@ import java.util.Calendar;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +31,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -59,7 +61,8 @@ public class AgentController {
 	/**
 	 * Elidom Control Agent Index URL 
 	 */
-	@RequestMapping(method = RequestMethod.GET)
+	@CrossOrigin
+	@RequestMapping(value = "/api-info", method = RequestMethod.GET)
 	public Map<String, Object> index() {
 		
 		if(indexInfo.isEmpty()) {
@@ -91,6 +94,7 @@ public class AgentController {
 	/**
 	 * ping & pong
 	 */
+	@CrossOrigin
 	@RequestMapping(value = "/ping", method = RequestMethod.GET)
 	public String ping() {
 		return "pong";
@@ -101,8 +105,10 @@ public class AgentController {
 	 * 
 	 * @return
 	 */
+	@CrossOrigin
+	@SuppressWarnings({ "unchecked", "rawtypes" })
 	@RequestMapping(value = "/apps/infos", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
-	public List<Object> getAppInfos() {
+	public List<Object> getAppInfos(HttpServletRequest req) {
 		String[] ids = this.getPropertiesByKey(this.env, "apps.id");
 
 		if (ids == null || ids.length == 0) {
@@ -110,12 +116,60 @@ public class AgentController {
 		}
 
 		List<Object> apps = new ArrayList<Object>();
-
-		for (int i = 0; i < ids.length; i++) {
-			Map<String, Object> appInfo = this.getAppInfo(ids[i]);
-			if(appInfo != null && !appInfo.isEmpty()) {
-				apps.add(appInfo);
+		RestTemplate rest = new RestTemplate();
+		String appsUrl = req.getRequestURL().toString().replace("apps/infos", "admin/api/applications");
+		List<?> appResults = null;
+		
+		try {
+			appResults = rest.getForObject(appsUrl, List.class, new HashMap<String, Object>());
+		} catch(Exception e) {
+			return apps;
+		}
+		
+		for(Object result : appResults) {
+			Map<String, Object> appInfo = (Map<String, Object>)result;
+			Map statusInfoMap = (Map)appInfo.get("statusInfo");
+			String appStatus = (String)statusInfoMap.get("status");
+			appInfo.put("status", appStatus);
+			Long time = (Long)(statusInfoMap.get("timestamp"));
+			Date uptime = new Date(time);
+			SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+			String uptimeStr = sdf.format(uptime);	
+			appInfo.put("updatedAt", uptimeStr);			
+			
+			if(appStatus.equalsIgnoreCase("UP")) {
+				String adminAppId = (String)appInfo.get("id");
+				String url = appsUrl + "/" + adminAppId + "/info";
+				Map<?, ?> appAddInfo = null;
+				
+				try {
+					appAddInfo = rest.getForObject(url, Map.class, new HashMap<String, Object>());
+				} catch (Exception e) {
+					appInfo.put("status", "DOWN");
+					apps.add(appInfo);
+					continue;
+				}
+				
+				appInfo.put("version", appAddInfo.get("version"));
+				appInfo.put("stage", appAddInfo.get("stage"));
+				Map<?, ?> appInfoMap = (Map)appAddInfo.get("appInfo");
+				
+				if(appInfoMap != null && !appInfoMap.isEmpty()) {
+					Iterator keyIter = appInfoMap.keySet().iterator();
+					while(keyIter.hasNext()) {
+						String key = (String)keyIter.next();
+						appInfo.put(key, appInfoMap.get(key));
+					}
+				}
+				
+				String monitoringUrl = (String)appInfo.get("serviceUrl");
+				String svcPort = (String)appInfo.get("port");
+				String mntPort = (String)appInfo.get("monitorPort");
+				monitoringUrl = monitoringUrl.replace(svcPort, mntPort);
+				appInfo.put("monitorUrl", monitoringUrl);				
 			}
+			
+			apps.add(appInfo);
 		}
 
 		return apps;
@@ -127,6 +181,8 @@ public class AgentController {
 	 * @param appId
 	 * @return
 	 */
+	@CrossOrigin
+	@SuppressWarnings("rawtypes")
 	@RequestMapping(value = "/apps/{app_id}/info", method = RequestMethod.GET)
 	private Map<String, Object> getAppInfo(@PathVariable("app_id") String appId) {
 		Map<String, String> props = this.checkProperties(appId, "info");
@@ -141,10 +197,17 @@ public class AgentController {
 		
 		try {
 			Map<?, ?> result = rest.getForObject(url, Map.class, appInfo);
-			String appStage = (String)result.get("stage");
-			String appTitle = (String)result.get("name");
-			appInfo.put("name", appTitle);
-			appInfo.put("stage", appStage);
+			appInfo.put("version", result.get("version"));
+			appInfo.put("stage", result.get("stage"));
+			Map<?, ?> appInfoMap = (Map)result.get("app_info");
+			
+			if(appInfoMap != null && !appInfoMap.isEmpty()) {
+				Iterator keyIter = appInfoMap.keySet().iterator();
+				while(keyIter.hasNext()) {
+					String key = (String)keyIter.next();
+					appInfo.put(key, appInfoMap.get(key));
+				}
+			}
 			
 		} catch(Exception e) {
 			this.logger.error(e.getMessage(), e);
@@ -181,6 +244,7 @@ public class AgentController {
 	 * @param appId
 	 * @return execute message
 	 */
+	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/redis_flushall", method = RequestMethod.DELETE)
 	public String redisFlushall(@PathVariable("app_id") String appId) {
 		HashMap<String, String> pMap = this.checkProperties(appId, "redisFlushall");
@@ -200,6 +264,7 @@ public class AgentController {
 	 * @param appId
 	 * @return execute message
 	 */
+	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/start", method = RequestMethod.POST)
 	public String startBoot(@PathVariable("app_id") String appId) {
 		HashMap<String, String> pMap = this.checkProperties(appId, "start");
@@ -219,6 +284,7 @@ public class AgentController {
 	 * @param appId
 	 * @return execute message
 	 */
+	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/restart", method = RequestMethod.POST)
 	public String retartBoot(@PathVariable("app_id") String appId) {
 		try {
@@ -241,6 +307,7 @@ public class AgentController {
 	 * @param appId
 	 * @return execute message
 	 */
+	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/stop", method = RequestMethod.POST)
 	public String stopBoot(@PathVariable("app_id") String appId) {
 		RestTemplate rest = new RestTemplate();
@@ -256,6 +323,7 @@ public class AgentController {
 	 * @param appId
 	 * @return execute message
 	 */
+	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/deploy", method = RequestMethod.POST)
 	public String deploy(@PathVariable("app_id") String appId) {
 		this.stopBoot(appId);
@@ -383,6 +451,7 @@ public class AgentController {
 	 * @param appId
 	 * @return
 	 */
+	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/log/files", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public List<Map<String, Object>> logFileList(@PathVariable("app_id") String appId) {
 		HashMap<String, String> pMap = this.checkProperties(appId, "log");
@@ -472,6 +541,7 @@ public class AgentController {
 	 * @param fileName
 	 * @return
 	 */
+	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/log/{file_name}/delete", method = RequestMethod.DELETE, produces = MediaType.APPLICATION_JSON_VALUE)
 	public Boolean deleteFileList(@PathVariable("app_id") String appId, @PathVariable("file_name") String fileName) {
 		String filePath = this.getLogFilePath(appId, fileName);
@@ -492,6 +562,7 @@ public class AgentController {
 	 * @param lines
 	 * @return 로그 파일의 내용을 읽어서 리턴  
 	 */
+	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/log/{file_name}/read", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public Map<String, String> readLog(
 			@PathVariable("app_id") String appId,
@@ -519,6 +590,7 @@ public class AgentController {
 	 * @param lines
 	 * @return 오늘의 로그의 내용을 리턴 
 	 */
+	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/log/today/read", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public Map<String, String> readTodayLog(
 			@PathVariable("app_id") String appId,
@@ -533,6 +605,7 @@ public class AgentController {
 	 * @param fileName
 	 * @return filePath에 해당하는 로그의 내용을 리턴 
 	 */
+	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/log/{file_name}/download", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public boolean downloadLog(HttpServletRequest req, HttpServletResponse res, @PathVariable("app_id") String appId, @PathVariable("file_name") String fileName) {
 		String logPath = (fileName != null) ? 
@@ -592,6 +665,7 @@ public class AgentController {
 	 * @param appId
 	 * @return 오늘의 로그의 내용을 리턴 
 	 */
+	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/log/today/download", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public boolean downloadLog(HttpServletRequest req, HttpServletResponse res, @PathVariable("app_id") String appId) {
 		return this.downloadLog(req, res, appId, null);
