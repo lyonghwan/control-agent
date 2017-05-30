@@ -18,9 +18,11 @@ import org.springframework.stereotype.Service;
 @WebFilter("/*.json")
 public class CorsFilter implements Filter {
 
+	@Override
 	public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException {
 		HttpServletRequest request = (HttpServletRequest) req;
 		HttpServletResponse response = (HttpServletResponse) res;
+		String uri = request.getRequestURI();
 		
         /*response.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS, DELETE");
         response.setHeader("Access-Control-Max-Age", "3600");
@@ -29,8 +31,6 @@ public class CorsFilter implements Filter {
         if(response.getHeader("Access-Control-Allow-Origin") == null) {
         		response.setHeader("Access-Control-Allow-Origin", "*");
         }*/
-		
-		String uri = request.getRequestURI();
 		
 		if(uri.startsWith("/admin/api/applications")) {
 			response.setHeader("Access-Control-Max-Age", "3600000");
@@ -49,9 +49,12 @@ public class CorsFilter implements Filter {
 		chain.doFilter(req, res);
 	}
 
-	public void init(FilterConfig filterConfig) {
+	@Override
+	public void init(FilterConfig filterConfig) throws ServletException {
 	}
 
+	@Override
 	public void destroy() {
 	}
+	
 }

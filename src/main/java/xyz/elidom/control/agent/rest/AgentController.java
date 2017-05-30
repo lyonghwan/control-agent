@@ -41,6 +41,7 @@ import org.springframework.web.client.RestTemplate;
 
 import xyz.elidom.control.agent.util.StreamPrinter;
 
+@CrossOrigin
 @RestController
 public class AgentController {
 
@@ -61,7 +62,6 @@ public class AgentController {
 	/**
 	 * Elidom Control Agent Index URL 
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/api-info", method = RequestMethod.GET)
 	public Map<String, Object> index() {
 		
@@ -94,7 +94,6 @@ public class AgentController {
 	/**
 	 * ping & pong
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/ping", method = RequestMethod.GET)
 	public String ping() {
 		return "pong";
@@ -105,7 +104,6 @@ public class AgentController {
 	 * 
 	 * @return
 	 */
-	@CrossOrigin
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	@RequestMapping(value = "/apps/infos", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public List<Object> getAppInfos(HttpServletRequest req) {
@@ -181,7 +179,6 @@ public class AgentController {
 	 * @param appId
 	 * @return
 	 */
-	@CrossOrigin
 	@SuppressWarnings("rawtypes")
 	@RequestMapping(value = "/apps/{app_id}/info", method = RequestMethod.GET)
 	private Map<String, Object> getAppInfo(@PathVariable("app_id") String appId) {
@@ -244,7 +241,6 @@ public class AgentController {
 	 * @param appId
 	 * @return execute message
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/redis_flushall", method = RequestMethod.DELETE)
 	public String redisFlushall(@PathVariable("app_id") String appId) {
 		HashMap<String, String> pMap = this.checkProperties(appId, "redisFlushall");
@@ -264,7 +260,6 @@ public class AgentController {
 	 * @param appId
 	 * @return execute message
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/start", method = RequestMethod.POST)
 	public String startBoot(@PathVariable("app_id") String appId) {
 		HashMap<String, String> pMap = this.checkProperties(appId, "start");
@@ -284,7 +279,6 @@ public class AgentController {
 	 * @param appId
 	 * @return execute message
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/restart", method = RequestMethod.POST)
 	public String retartBoot(@PathVariable("app_id") String appId) {
 		try {
@@ -307,7 +301,6 @@ public class AgentController {
 	 * @param appId
 	 * @return execute message
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/stop", method = RequestMethod.POST)
 	public String stopBoot(@PathVariable("app_id") String appId) {
 		RestTemplate rest = new RestTemplate();
@@ -323,7 +316,6 @@ public class AgentController {
 	 * @param appId
 	 * @return execute message
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/deploy", method = RequestMethod.POST)
 	public String deploy(@PathVariable("app_id") String appId) {
 		this.stopBoot(appId);
@@ -451,7 +443,6 @@ public class AgentController {
 	 * @param appId
 	 * @return
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/log/files", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public List<Map<String, Object>> logFileList(@PathVariable("app_id") String appId) {
 		HashMap<String, String> pMap = this.checkProperties(appId, "log");
@@ -541,7 +532,6 @@ public class AgentController {
 	 * @param fileName
 	 * @return
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/log/{file_name}/delete", method = RequestMethod.DELETE, produces = MediaType.APPLICATION_JSON_VALUE)
 	public Boolean deleteFileList(@PathVariable("app_id") String appId, @PathVariable("file_name") String fileName) {
 		String filePath = this.getLogFilePath(appId, fileName);
@@ -562,7 +552,6 @@ public class AgentController {
 	 * @param lines
 	 * @return 로그 파일의 내용을 읽어서 리턴  
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/log/{file_name}/read", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public Map<String, String> readLog(
 			@PathVariable("app_id") String appId,
@@ -590,7 +579,6 @@ public class AgentController {
 	 * @param lines
 	 * @return 오늘의 로그의 내용을 리턴 
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/log/today/read", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public Map<String, String> readTodayLog(
 			@PathVariable("app_id") String appId,
@@ -605,7 +593,6 @@ public class AgentController {
 	 * @param fileName
 	 * @return filePath에 해당하는 로그의 내용을 리턴 
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/log/{file_name}/download", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public boolean downloadLog(HttpServletRequest req, HttpServletResponse res, @PathVariable("app_id") String appId, @PathVariable("file_name") String fileName) {
 		String logPath = (fileName != null) ? 
@@ -665,7 +652,6 @@ public class AgentController {
 	 * @param appId
 	 * @return 오늘의 로그의 내용을 리턴 
 	 */
-	@CrossOrigin
 	@RequestMapping(value = "/apps/{app_id}/log/today/download", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
 	public boolean downloadLog(HttpServletRequest req, HttpServletResponse res, @PathVariable("app_id") String appId) {
 		return this.downloadLog(req, res, appId, null);
