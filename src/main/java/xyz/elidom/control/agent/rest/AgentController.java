@@ -83,6 +83,7 @@ public class AgentController {
 			urlInfo.put("Application Download Log By AppId, Log File Name", "/apps/{app_id}/log/{file_name}/download:GET");
 			urlInfo.put("View Application Informations", "/apps/infos:GET");
 			urlInfo.put("View Application Information By AppId", "/apps/{app_id}/info:GET");
+			urlInfo.put("View Module Info's of Application By AppId", "/apps/{app_id}/module_infos:GET");
 			urlInfo.put("Redis Flushall By AppId", "/apps/{app_id}/redis_flushall:DELETE");
 			
 			indexInfo.put("apis", urlInfo);
@@ -222,6 +223,29 @@ public class AgentController {
 		}
 					
 		return appInfo;
+	}
+	
+	/**
+	 * Control Agent가 관리하는 모든 애플리케이션 중 appId에 해당하는 애플리케이션이 보유하는 모듈리스트의 요약 정보를 리턴 
+	 * 
+	 * @param appId
+	 * @return
+	 */
+	@RequestMapping(value = "/apps/{app_id}/module_infos:GET", method = RequestMethod.GET)
+	private Object getAppModuleInfo(@PathVariable("app_id") String appId) {
+		Map<String, String> props = this.checkProperties(appId, "info");
+		
+		RestTemplate rest = new RestTemplate();
+		String appPort = props.get("PORT");
+		String url = this.getAgentUrl(appPort, "rest/modules/infos");
+		
+		try {
+			return rest.getForObject(url, Map.class, new HashMap<String, Object>());
+		} catch(Exception e) {
+			this.logger.error(e.getMessage(), e);
+		}
+		
+		return null;
 	}
 	
 	/**
