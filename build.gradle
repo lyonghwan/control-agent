@@ -2,32 +2,33 @@ buildscript {
 	ext {
 		baseUrl = "http://repo.hatiolab.com/nexus/content";
 		springBootVersion = '1.4.4.RELEASE'
-		elidomVersion = 'latest.release'
 	}
-
 	repositories {
 		maven {
 			url baseUrl + '/groups/elidom-repository/'
 			//maven { url 'http://repo.spring.io/plugins-release' }
 		}
 	}
-
 	dependencies {
 		classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
 		classpath("org.springframework.build.gradle:propdeps-plugin:0.0.7")		 
 	}
 }
 
-apply from : 'elidom.gradle'
+version = '1.4.4'
+
+apply from : 'elings.gradle'
 apply plugin: 'org.springframework.boot'
 
-sourceCompatibility = 1.8
-compileJava.options.encoding = 'UTF-8'
+configurations {
+	provided.all*.exclude group: 'javax.servlet'
+}
 
 jar {
+	baseName = 'control-agent'
+	
 	manifest {
-		attributes 'Implementation-Title': 'Elidom-Control-Agent',
-				   'Implementation-Version': version,
+		attributes 'Implementation-Title': 'Control-Agent',
 				   'Main-Class': 'xyz.elidom.control.agent.ElidomControlAgentApplication'
 	}
 }
@@ -39,13 +40,13 @@ repositories {
 	// mavenCentral()
 }
 
-sourceCompatibility = 1.8
-
-repositories {
-	mavenCentral()
+ext {
+//	elidomVersion = '1.4.4-SNAPSHOT'
+	elidomVersion = 'latest.integration'
 }
 
 dependencies {
+	// Spring Admin
 	compile('org.springframework.boot:spring-boot-starter-web')
 
 	compile('de.codecentric:spring-boot-admin-server:1.4.5')

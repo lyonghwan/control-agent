@@ -30,7 +30,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -294,7 +293,7 @@ public class AgentController {
 			return "Error : \n\n" + e.getMessage();
 		}
 
-		return "Entered Startup Command SUCCESS";		
+		return "OK";
 	}
 
 	/**
@@ -327,11 +326,21 @@ public class AgentController {
 	 */
 	@RequestMapping(value = "/apps/{app_id}/stop", method = RequestMethod.POST)
 	public String stopBoot(@PathVariable("app_id") String appId) {
-		RestTemplate rest = new RestTemplate();
+		/*RestTemplate rest = new RestTemplate();
 		String port = this.env.getProperty(appId + ".port");
 		String url = "http://localhost:" + port + "/shutdown";
 		ResponseEntity<String> response = rest.postForEntity(url, "", String.class);
-		return response.getBody();
+		return response.getBody();*/
+		
+		HashMap<String, String> pMap = this.checkProperties(appId, "stop");
+
+		try {
+			this.commandStart(pMap.get("PATH"));
+		} catch (Exception e) {
+			return "Error : \n\n" + e.getMessage();
+		}
+
+		return "OK";
 	}
 
 	/**
@@ -345,19 +354,18 @@ public class AgentController {
 		this.stopBoot(appId);
 
 		try {
-			Thread.sleep(5000);
+			Thread.sleep(1000);
 		} catch (Exception e) {
 		}
 
-		HashMap<String, String> pMap = this.checkProperties(appId, "update");
-
 		try {
+			HashMap<String, String> pMap = this.checkProperties(appId, "update");
 			this.commandStart(pMap.get("PATH"));
 		} catch (Exception e) {
 			return "Failed to update application execution file : " + e.getMessage();
 		}
 
-		this.startBoot(appId);
+		//this.startBoot(appId);
 		return "OK";
 	}
 
