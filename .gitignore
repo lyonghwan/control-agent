@@ -24,5 +24,6 @@ dist/
 nbdist/
 .nb-gradle/
 /bin/
+/logs/
 
 src/main/resources/application-development.properties
