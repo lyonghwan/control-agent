@@ -31,11 +31,11 @@ public class AgentInfoContributor implements InfoContributor {
 	 */
     @Override
     public void contribute(Info.Builder builder) {
-    		Map<String, String> appInfo = new HashMap<String, String>(); 
-    		appInfo.put("appId", "monitor-agent");
-    		appInfo.put("name", "모니터링 에이전트");
-    		appInfo.put("port", env.getProperty("server.port"));
-    		appInfo.put("monitorPort", env.getProperty("info.agent.port"));
+    	Map<String, String> appInfo = new HashMap<String, String>(); 
+    	appInfo.put("appId", "monitor-agent");
+    	appInfo.put("name", "모니터링 에이전트");
+    	appInfo.put("port", env.getProperty("server.port"));
+    	appInfo.put("monitorPort", env.getProperty("info.agent.port"));
         builder.withDetail("appInfo", appInfo);
     }
     

@@ -351,13 +351,6 @@ public class AgentController {
 	 */
 	@RequestMapping(value = "/apps/{app_id}/deploy", method = RequestMethod.POST)
 	public String deploy(@PathVariable("app_id") String appId) {
-		this.stopBoot(appId);
-
-		try {
-			Thread.sleep(1000);
-		} catch (Exception e) {
-		}
-
 		try {
 			HashMap<String, String> pMap = this.checkProperties(appId, "update");
 			this.commandStart(pMap.get("PATH"));
@@ -365,7 +358,6 @@ public class AgentController {
 			return "Failed to update application execution file : " + e.getMessage();
 		}
 
-		//this.startBoot(appId);
 		return "OK";
 	}
 
