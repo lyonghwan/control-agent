@@ -74,11 +74,11 @@ public class ApplicationRegistrator {
 	public boolean register() {
 		boolean isRegistrationSuccessful = false;
 		Application self = createApplication();
+		LOGGER.error("Admin Client Application : " + self.getStatusInfo().getSystemStatus());
 		for (String adminUrl : admin.getAdminUrl()) {
 			try {
 				@SuppressWarnings("rawtypes")
-				ResponseEntity<Map> response = template.postForEntity(adminUrl,
-						new HttpEntity<>(self, HTTP_HEADERS), Map.class);
+				ResponseEntity<Map> response = template.postForEntity(adminUrl, new HttpEntity<>(self, HTTP_HEADERS), Map.class);
 
 				if (response.getStatusCode().equals(HttpStatus.CREATED)) {
 					if (registeredId.compareAndSet(null, response.getBody().get("id").toString())) {

@@ -70,10 +70,10 @@ public class ResourceMonitorUtil {
 	 * @param attrName
 	 * @return
 	 */
-	public static Integer getMbeanAttrInt(String attrName) {
+	public static int getMbeanAttrInt(String attrName) {
 		try {
 			Integer value = (Integer)getMbeanServer().getAttribute(getObjectName(), attrName);
-			return value;
+			return value.intValue();
 		} catch(Exception e) {
 			throw new RuntimeException(e);
 		}
@@ -85,10 +85,10 @@ public class ResourceMonitorUtil {
 	 * @param attrName
 	 * @return
 	 */
-	public static Long getMbeanAttrLong(String attrName) {
+	public static long getMbeanAttrLong(String attrName) {
 		try {
 			Long value = (Long)getMbeanServer().getAttribute(getObjectName(), attrName);
-			return value;
+			return value.longValue();
 		} catch(Exception e) {
 			throw new RuntimeException(e);
 		}
@@ -100,10 +100,10 @@ public class ResourceMonitorUtil {
 	 * @param attrName
 	 * @return
 	 */
-	public static Double getMbeanAttrDouble(String attrName) {
+	public static double getMbeanAttrDouble(String attrName) {
 		try {
 			Double value = (Double)getMbeanServer().getAttribute(getObjectName(), attrName);
-			return value;
+			return value.doubleValue();
 		} catch(Exception e) {
 			throw new RuntimeException(e);
 		}

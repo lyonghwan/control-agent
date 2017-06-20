@@ -226,23 +226,80 @@ public class SystemStatus {
 	 */
 	public static SystemStatus fromMap(Map<String, Object> map) {
 		SystemStatus ss = new SystemStatus();
-		ss.setName(map.containsKey("name") ? (String)map.get("name") : null);
-		ss.setVersion(map.containsKey("version") ? (String)map.get("version") : null);
-		ss.setArch(map.containsKey("arch") ? (String)map.get("arch") : null);
-		ss.setAvaliableProcessors(map.containsKey("availableProcessors") ? (int)map.get("availableProcessors") : 0);
-		ss.setSystemCpuLoad(map.containsKey("systemCpuLoad") ? (double)map.get("systemCpuLoad") : 0d);
-		ss.setSystemLoadAverage(map.containsKey("systemLoadAverage") ? (double)map.get("systemLoadAverage") : 0d);
-		ss.setProcessCpuLoad(map.containsKey("processCpuLoad") ? (double)map.get("processCpuLoad") : 0d);
-		ss.setTotalDiskSpace(map.containsKey("totalDiskSpace") ? (long)map.get("totalDiskSpace") : 0l);
-		ss.setFreeDiskSpace(map.containsKey("freeDiskSpace") ? (long)map.get("freeDiskSpace") : 0l);
 		
-		ss.setProcessCpuTime(valueToLong(map.get("processCpuTime")));
-		ss.setTotalPhysicalMemorySize(valueToLong(map.get("totalPhysicalMemorySize")));
-		ss.setFreePhysicalMemorySize(valueToLong(map.get("freePhysicalMemorySize")));
-		ss.setCommittedVirtualMemorySize(valueToLong(map.get("committedVirtualMemorySize")));
-		ss.setTotalSwapSpaceSize(valueToLong(map.get("totalSwapSpaceSize")));
-		ss.setFreeSwapSpaceSize(valueToLong(map.get("freeSwapSpaceSize")));
+		if(map != null) {
+			ss.setName(map.containsKey("name") ? (String)map.get("name") : null);
+			ss.setVersion(map.containsKey("version") ? (String)map.get("version") : null);
+			ss.setArch(map.containsKey("arch") ? (String)map.get("arch") : null);
+			ss.setAvaliableProcessors(valueToInt(map.get("availableProcessors")));
+			ss.setSystemCpuLoad(valueToDouble(map.get("systemCpuLoad")));
+			ss.setSystemLoadAverage(valueToDouble(map.get("systemLoadAverage")));
+			ss.setProcessCpuLoad(valueToDouble(map.get("processCpuLoad")));
+			ss.setTotalDiskSpace(valueToLong(map.get("totalDiskSpace")));
+			ss.setFreeDiskSpace(valueToLong(map.get("freeDiskSpace")));
+			ss.setProcessCpuTime(valueToLong(map.get("processCpuTime")));
+			ss.setTotalPhysicalMemorySize(valueToLong(map.get("totalPhysicalMemorySize")));
+			ss.setFreePhysicalMemorySize(valueToLong(map.get("freePhysicalMemorySize")));
+			ss.setCommittedVirtualMemorySize(valueToLong(map.get("committedVirtualMemorySize")));
+			ss.setTotalSwapSpaceSize(valueToLong(map.get("totalSwapSpaceSize")));
+			ss.setFreeSwapSpaceSize(valueToLong(map.get("freeSwapSpaceSize")));
+		}
+		
 		return ss;
+	}
+	
+	/**
+	 * value값을 int 값으로 변환 
+	 * 
+	 * @param value
+	 * @return
+	 */
+	private static int valueToInt(Object value) {
+		if(value == null || value.toString().equalsIgnoreCase("")) {
+			return 0;
+			
+		} else if(value instanceof Integer) {
+			return ((Integer)value).intValue();
+			
+		} else if(value instanceof Double) {
+			return ((Double)value).intValue();
+			
+		} else if(value instanceof Float) {
+			return ((Float)value).intValue();
+			
+		} else if(value instanceof Long) {
+			return ((Long)value).intValue();
+			
+		} else {
+			return new Integer(value.toString()).intValue();
+		}		
+	}
+	
+	/**
+	 * value값을 double 값으로 변환 
+	 * 
+	 * @param value
+	 * @return
+	 */
+	private static double valueToDouble(Object value) {
+		if(value == null || value.toString().equalsIgnoreCase("")) {
+			return 0;
+			
+		} else if(value instanceof Integer) {
+			return ((Integer)value).doubleValue();
+			
+		} else if(value instanceof Double) {
+			return ((Double)value).doubleValue();
+			
+		} else if(value instanceof Float) {
+			return ((Float)value).doubleValue();
+			
+		} else if(value instanceof Long) {
+			return ((Long)value).doubleValue();
+			
+		} else {
+			return new Double(value.toString()).doubleValue();
+		}
 	}
 	
 	/**
@@ -252,7 +309,7 @@ public class SystemStatus {
 	 * @return
 	 */
 	private static long valueToLong(Object value) {
-		if(value == null) {
+		if(value == null || value.toString().equalsIgnoreCase("")) {
 			return 0l;
 			
 		} else if(value instanceof Integer) {
@@ -268,8 +325,30 @@ public class SystemStatus {
 			return ((Long)value).longValue();
 			
 		} else {
-			return 0l;
+			return new Long(value.toString()).longValue();
 		}
+	}
+	
+	@Override
+	public String toString() {
+		StringBuffer buffer = new StringBuffer("{");
+		buffer.append("name:").append(this.name).append(",");
+		buffer.append("version:").append(this.version).append(",");
+		buffer.append("arch:").append(this.arch).append(",");
+		buffer.append("availableProcessors:").append(this.availableProcessors).append(",");
+		buffer.append("systemLoadAverage:").append(this.systemLoadAverage).append(",");
+		buffer.append("systemCpuLoad:").append(this.systemCpuLoad).append(",");
+		buffer.append("processCpuTime:").append(this.processCpuTime).append(",");
+		buffer.append("processCpuLoad:").append(this.processCpuLoad).append(",");
+		buffer.append("totalPhysicalMemorySize:").append(this.totalPhysicalMemorySize).append(",");
+		buffer.append("freePhysicalMemorySize:").append(this.freePhysicalMemorySize).append(",");
+		buffer.append("committedVirtualMemorySize:").append(this.committedVirtualMemorySize).append(",");
+		buffer.append("totalSwapSpaceSize:").append(this.totalSwapSpaceSize).append(",");
+		buffer.append("freeSwapSpaceSize:").append(this.freeSwapSpaceSize).append(",");
+		buffer.append("totalDiskSpace:").append(this.totalDiskSpace).append(",");
+		buffer.append("freeDiskSpace:").append(this.freeDiskSpace);
+		buffer.append("}");
+		return buffer.toString();
 	}
 	
 }
