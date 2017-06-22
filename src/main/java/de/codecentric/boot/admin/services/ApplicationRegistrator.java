@@ -74,7 +74,6 @@ public class ApplicationRegistrator {
 	public boolean register() {
 		boolean isRegistrationSuccessful = false;
 		Application self = createApplication();
-		LOGGER.error("Admin Client Application : " + self.getStatusInfo().getSystemStatus());
 		for (String adminUrl : admin.getAdminUrl()) {
 			try {
 				@SuppressWarnings("rawtypes")

@@ -47,8 +47,8 @@ public class AgentController {
 	protected Logger logger = LoggerFactory.getLogger(AgentController.class);
 
 	private static final String FILE_SEPARATOR = "/";
-	private static final String LOG_FILENAME = "applicatoin.";
-	private static final String LOG_FILENAME_2 = "application.";
+	private static final String LOG_FILENAME = "application.";
+	private static final String LOG_FILENAME_2 = "applicatoin.";
 	private static final String LOG_FILE_EXT = ".log";
 
 	@Autowired
@@ -148,7 +148,6 @@ public class AgentController {
 					continue;
 				}
 				
-				appInfo.put("version", appAddInfo.get("version"));
 				appInfo.put("stage", appAddInfo.get("stage"));
 				Map<?, ?> appInfoMap = (Map)appAddInfo.get("appInfo");
 				
@@ -156,7 +155,10 @@ public class AgentController {
 					Iterator keyIter = appInfoMap.keySet().iterator();
 					while(keyIter.hasNext()) {
 						String key = (String)keyIter.next();
-						appInfo.put(key, appInfoMap.get(key));
+						Object val = appInfoMap.get(key);
+						if(val instanceof String) {
+							appInfo.put(key, appInfoMap.get(key));
+						}
 					}
 				}
 				
@@ -230,7 +232,7 @@ public class AgentController {
 	 * @param appId
 	 * @return
 	 */
-	@RequestMapping(value = "/apps/{app_id}/module_infos:GET", method = RequestMethod.GET)
+	@RequestMapping(value = "/apps/{app_id}/module_infos", method = RequestMethod.GET)
 	private Object getAppModuleInfo(@PathVariable("app_id") String appId) {
 		Map<String, String> props = this.checkProperties(appId, "info");
 		
