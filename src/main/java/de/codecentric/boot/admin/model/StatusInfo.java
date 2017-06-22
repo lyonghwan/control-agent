@@ -1,6 +1,7 @@
 package de.codecentric.boot.admin.model;
 
 import java.io.Serializable;
+import java.util.Map;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -16,7 +17,15 @@ public class StatusInfo implements Serializable {
 	private final String status;
 	private final long timestamp;
 	private SystemStatus systemStatus;
+	private Map<String, Object> appsStatus;
 
+	protected StatusInfo(String status, long timestamp, SystemStatus systemStatus, Map<String, Object> appsStatus) {
+		this.status = status.toUpperCase();
+		this.timestamp = timestamp;
+		this.systemStatus = systemStatus;
+		this.appsStatus = appsStatus;
+	}
+	
 	protected StatusInfo(String status, long timestamp, SystemStatus systemStatus) {
 		this.status = status.toUpperCase();
 		this.timestamp = timestamp;
@@ -26,6 +35,10 @@ public class StatusInfo implements Serializable {
 	protected StatusInfo(String status, long timestamp) {
 		this.status = status.toUpperCase();
 		this.timestamp = timestamp;
+	}
+	
+	public static StatusInfo valueOf(String statusCode, long timestamp, SystemStatus systemStatus, Map<String, Object> appsStatus) {
+		return new StatusInfo(statusCode, timestamp, systemStatus, appsStatus);
 	}
 	
 	public static StatusInfo valueOf(String statusCode, long timestamp, SystemStatus systemStatus) {
@@ -73,6 +86,14 @@ public class StatusInfo implements Serializable {
 	
 	public void setSystemStatus(SystemStatus systemStatus) {
 		this.systemStatus = systemStatus;
+	}
+
+	public Map<String, Object> getAppsStatus() {
+		return appsStatus;
+	}
+
+	public void setAppsStatus(Map<String, Object> appsStatus) {
+		this.appsStatus = appsStatus;
 	}
 
 	@Override

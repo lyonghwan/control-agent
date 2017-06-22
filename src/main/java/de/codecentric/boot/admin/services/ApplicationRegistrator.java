@@ -124,7 +124,9 @@ public class ApplicationRegistrator {
 
 	protected Application createApplication() {
 		SystemStatus systemStatus = ResourceMonitorUtil.getCurrentSystemResourceStatus();
-		StatusInfo statusInfo = StatusInfo.valueOf(StatusInfo.ofUnknown().getStatus(), System.currentTimeMillis(), systemStatus);
+		Map<String, Object> appsStatus = ResourceMonitorUtil.managedAppsStatuses();
+		StatusInfo statusInfo = StatusInfo.valueOf(StatusInfo.ofUnknown().getStatus(), System.currentTimeMillis(), systemStatus, appsStatus);
+		
 		return Application.create(client.getName()).withHealthUrl(client.getHealthUrl())
 				.withManagementUrl(client.getManagementUrl()).withServiceUrl(client.getServiceUrl()).withStatusInfo(statusInfo)
 				.build();

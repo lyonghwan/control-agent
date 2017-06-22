@@ -2,11 +2,13 @@ package xyz.elidom.control.agent.util;
 
 import java.io.File;
 import java.lang.management.ManagementFactory;
+import java.util.Map;
 
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
 
 import de.codecentric.boot.admin.model.SystemStatus;
+import xyz.elidom.control.agent.rest.AgentController;
 
 /**
  * Server Resource Monitor를 위한 유틸리티 
@@ -288,6 +290,15 @@ public class ResourceMonitorUtil {
 		status.setTotalDiskSpace(getTotalDiskSpace());
 		status.setFreeDiskSpace(getFreeDiskSpace());
 		return status;
+	}
+	
+	/**
+	 * Control Agent가 관리하는 application id - status 값 쌍을 Map 형태로 리턴 
+	 * 
+	 * @return
+	 */
+	public static Map<String, Object> managedAppsStatuses() {
+		return BeanUtil.get(AgentController.class).managedAppsStatus();
 	}
 	
 }

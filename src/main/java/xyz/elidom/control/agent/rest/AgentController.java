@@ -116,11 +116,9 @@ public class AgentController {
 		List<Object> apps = new ArrayList<Object>();
 		RestTemplate rest = new RestTemplate();
 		String appsUrl = req.getRequestURL().toString().replace("apps/infos", "admin/api/applications");
-		List<?> appResults = null;
+		List<?> appResults = this.invokeListByRest(appsUrl);
 		
-		try {
-			appResults = rest.getForObject(appsUrl, List.class, new HashMap<String, Object>());
-		} catch(Exception e) {
+		if(appResults == null) {
 			return apps;
 		}
 		
@@ -173,6 +171,48 @@ public class AgentController {
 		}
 
 		return apps;
+	}
+	
+	/**
+	 * List를 리턴하는 REST API를 호출 
+	 * 
+	 * @param url
+	 * @return
+	 */
+	public List<?> invokeListByRest(String url) {
+		RestTemplate rest = new RestTemplate();
+		List<?> appResults = null;
+		
+		try {
+			appResults = rest.getForObject(url, List.class, new HashMap<String, Object>());
+		} catch(Exception e) {
+			return null;
+		}
+		
+		return appResults;
+	}
+	
+	/**
+	 * 관리하고 있는 모든 Application의 appId - 상태 값을 리턴  
+	 * 
+	 * @return
+	 */
+	@SuppressWarnings({ "unchecked", "rawtypes" })
+	@RequestMapping(value = "/apps/app_statuses", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
+	public Map<String, Object> managedAppsStatus() {
+		String appStatusUrl = "http://localhost:" + this.env.getProperty("server.port") + "/admin/api/applications";
+    	List<?> statusList = this.invokeListByRest(appStatusUrl);
+    	Map<String, Object> appStatuses = new HashMap<String, Object>();
+    	
+    	for(Object status : statusList) {
+    		Map<String, Object> statusMap = (Map<String, Object>)status;
+    		String appName = (String)statusMap.get("name");
+			Map statusInfoMap = (Map)statusMap.get("statusInfo");
+			String appStatus = (String)statusInfoMap.get("status");
+			appStatuses.put(appName, appStatus);
+    	}
+    	
+    	return appStatuses;
 	}
 
 	/**

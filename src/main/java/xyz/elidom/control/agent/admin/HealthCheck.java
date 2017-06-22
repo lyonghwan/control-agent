@@ -1,7 +1,9 @@
 package xyz.elidom.control.agent.admin;
 
+import java.util.HashMap;
 import java.util.Map;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.Health.Builder;
 import org.springframework.boot.actuate.health.HealthIndicator;
@@ -9,11 +11,15 @@ import org.springframework.boot.actuate.health.Status;
 import org.springframework.stereotype.Component;
 
 import de.codecentric.boot.admin.model.SystemStatus;
+import xyz.elidom.control.agent.rest.AgentController;
 import xyz.elidom.control.agent.util.ResourceMonitorUtil;
 
 @Component
 public class HealthCheck implements HealthIndicator {
-  
+ 	
+	@Autowired
+	private AgentController agentCtrl;
+		
     @Override
     public Health health() {
         int errorCode = check();
@@ -49,7 +55,23 @@ public class HealthCheck implements HealthIndicator {
     private Map<String, Object> buildHealthDetails() {
     	SystemStatus ss = ResourceMonitorUtil.getCurrentSystemResourceStatus();
     	Map<String, Object> details = ss.toMap();
+    	this.buildAppStatuses(details);
     	return details;
+    }
+    
+    /**
+     * Control Agent가 관리하는 Application들의 상태 정보를 리턴 
+     * 
+     * @param details
+     * @return
+     */
+	private void buildAppStatuses(Map<String, Object> details) {
+    	Map<String, Object> statusList = this.agentCtrl.managedAppsStatus();
+    	if(details == null) {
+    		details = new HashMap<String, Object>();
+    	}
+    	
+    	details.put("appsStatus", statusList);
     }
     
 }
