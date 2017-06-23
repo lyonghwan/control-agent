@@ -1,21 +1,7 @@
-/*
- * Copyright 2014 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package de.codecentric.boot.admin.services;
 
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -31,11 +17,10 @@ import org.springframework.web.client.RestTemplate;
 import de.codecentric.boot.admin.config.AdminClientProperties;
 import de.codecentric.boot.admin.config.AdminProperties;
 import de.codecentric.boot.admin.model.Application;
-import de.codecentric.boot.admin.model.StatusInfo;
-import de.codecentric.boot.admin.model.SystemStatus;
 import xyz.elidom.control.agent.util.ResourceMonitorUtil;
 
 /**
+ * Admin Client가 Admin Server에 자신을 등록하거나 제거하는 요청 
  * Registers the client application at spring-boot-admin-server
  */
 public class ApplicationRegistrator {
@@ -77,13 +62,14 @@ public class ApplicationRegistrator {
 		for (String adminUrl : admin.getAdminUrl()) {
 			try {
 				@SuppressWarnings("rawtypes")
-				ResponseEntity<Map> response = template.postForEntity(adminUrl, new HttpEntity<>(self, HTTP_HEADERS), Map.class);
+				ResponseEntity<Map> response = template.postForEntity(adminUrl, 
+						new HttpEntity<>(self, HTTP_HEADERS), Map.class);
 
 				if (response.getStatusCode().equals(HttpStatus.CREATED)) {
 					if (registeredId.compareAndSet(null, response.getBody().get("id").toString())) {
 						LOGGER.info("Application registered itself as {}", response.getBody());
 					} else {
-						LOGGER.debug("Application refreshed itself as {}", response.getBody());
+						LOGGER.info("Application refreshed itself as {}", response.getBody());
 					}
 
 					isRegistrationSuccessful = true;
@@ -123,12 +109,16 @@ public class ApplicationRegistrator {
 	}
 
 	protected Application createApplication() {
-		SystemStatus systemStatus = ResourceMonitorUtil.getCurrentSystemResourceStatus();
-		Map<String, Object> appsStatus = ResourceMonitorUtil.managedAppsStatuses();
-		StatusInfo statusInfo = StatusInfo.valueOf(StatusInfo.ofUnknown().getStatus(), System.currentTimeMillis(), systemStatus, appsStatus);
+		// Customized : Application 확장 정보 추가 
+		Map<String, Object> extensions = new HashMap<String, Object>();
+		extensions.put(Application.EXT_SYSTEM_STATUS_KEY, ResourceMonitorUtil.getCurrentSystemResourceStatus().toMap());
+		extensions.put(Application.EXT_APPS_STATUS_KEY, ResourceMonitorUtil.managedAppsStatuses());
 		
-		return Application.create(client.getName()).withHealthUrl(client.getHealthUrl())
-				.withManagementUrl(client.getManagementUrl()).withServiceUrl(client.getServiceUrl()).withStatusInfo(statusInfo)
+		return Application.create(client.getName())
+				.withHealthUrl(client.getHealthUrl())
+				.withManagementUrl(client.getManagementUrl())
+				.withServiceUrl(client.getServiceUrl())
+				.withExtensions(extensions)
 				.build();
 	}
 }

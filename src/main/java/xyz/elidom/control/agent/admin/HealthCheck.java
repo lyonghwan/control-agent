@@ -10,7 +10,7 @@ import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.boot.actuate.health.Status;
 import org.springframework.stereotype.Component;
 
-import de.codecentric.boot.admin.model.SystemStatus;
+import de.codecentric.boot.admin.model.Application;
 import xyz.elidom.control.agent.rest.AgentController;
 import xyz.elidom.control.agent.util.ResourceMonitorUtil;
 
@@ -53,25 +53,12 @@ public class HealthCheck implements HealthIndicator {
      * @return
      */
     private Map<String, Object> buildHealthDetails() {
-    	SystemStatus ss = ResourceMonitorUtil.getCurrentSystemResourceStatus();
-    	Map<String, Object> details = ss.toMap();
-    	this.buildAppStatuses(details);
+    	Map<String, Object> details = new HashMap<String, Object>();
+    	// 1. ontrol Agent가 실행되고 있는 System 들의 리소스 상태 정보를 추가 
+    	details.put(Application.EXT_SYSTEM_STATUS_KEY, ResourceMonitorUtil.getCurrentSystemResourceStatus().toMap());
+    	// 2. Control Agent가 관리하는 Application들의 상태 정보를 리턴 
+    	details.put(Application.EXT_APPS_STATUS_KEY, this.agentCtrl.managedAppsStatus());
     	return details;
-    }
-    
-    /**
-     * Control Agent가 관리하는 Application들의 상태 정보를 리턴 
-     * 
-     * @param details
-     * @return
-     */
-	private void buildAppStatuses(Map<String, Object> details) {
-    	Map<String, Object> statusList = this.agentCtrl.managedAppsStatus();
-    	if(details == null) {
-    		details = new HashMap<String, Object>();
-    	}
-    	
-    	details.put("appsStatus", statusList);
     }
     
 }
