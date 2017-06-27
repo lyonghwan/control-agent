@@ -1,11 +1,17 @@
 package xyz.elidom.control.agent.rest;
 
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URL;
+import java.net.URLConnection;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.text.ParseException;
@@ -25,6 +31,7 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.input.ReversedLinesFileReader;
+import org.junit.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -391,22 +398,128 @@ public class AgentController {
 	 * @param appId
 	 * @return execute message
 	 */
+	@SuppressWarnings("unchecked")
 	@RequestMapping(value = "/apps/{app_id}/deploy", method = RequestMethod.POST)
 	public String deploy(@PathVariable("app_id") String appId) {
 		try {
-			HashMap<String, String> pMap = this.checkProperties(appId, "update");
-			this.commandStart(pMap.get("PATH"));
+			// 1. 프로퍼티 체크 
+			String appsAdminServerUrlKey = "apps.admin.server.url";
+			String appHomePathKey = appId + ".home.path";
+			String appFileInfoUrlKey = appId + ".app.file.info.url";
+			String latestFileName = "latest-version.jar";
+			
+			Assert.assertNotNull("[" + appsAdminServerUrlKey + "] must not be empty", this.env.getProperty(appsAdminServerUrlKey));
+			Assert.assertNotNull("[" + appHomePathKey + "] must not be empty", this.env.getProperty(appHomePathKey));
+			Assert.assertNotNull("[" + appFileInfoUrlKey + "] must not be empty", this.env.getProperty(appFileInfoUrlKey));
+			
+			// 2. http invoke by jar information url
+			String appsAdminServerUrl = this.env.getProperty(appsAdminServerUrlKey);
+			String homePath = this.env.getProperty(appHomePathKey);
+			String appFileInfoUrl = this.env.getProperty(appFileInfoUrlKey);
+			String jarFileInfoUrl = "";
+			
+			RestTemplate rest = new RestTemplate();
+			if(!appFileInfoUrl.startsWith("http")) {
+				jarFileInfoUrl = appsAdminServerUrl;
+				jarFileInfoUrl += (appsAdminServerUrl.endsWith("/") || appFileInfoUrl.startsWith("/")) ? "" : "/";
+				jarFileInfoUrl += appFileInfoUrl;
+			} else {
+				jarFileInfoUrl = appFileInfoUrl;
+			}
+			
+			// 3. file 정보로 부터 복사할 파일의 URL을 추출 ...
+			this.logger.info("Get file information by url [" + jarFileInfoUrl + "]");
+			Map<String, Object> fileInfo = rest.getForObject(jarFileInfoUrl, Map.class, new HashMap<String, Object>());
+			String fileId = (String)fileInfo.get("id");
+			String downloadUrl = appsAdminServerUrl + (appsAdminServerUrl.endsWith("/") ? "" : "/") + "rest/download/public/" + fileId;
+			String downloadPath = homePath + File.separator + latestFileName;
+			this.logger.info("File downloading by url [" + downloadPath + "]");
+			this.downloadByUrl(downloadUrl, downloadPath);
+			this.logger.info("File downloaded!");
+			
+			// 4. 애플리케이션 stop 
+			this.stopBoot(appId);
+			this.logger.info("Application stopping...");
+			
+			// 5. 애플리케이션 죽을 때 까지 약간 기다렸다가 ...
+			try {
+				Thread.sleep(6000);
+			} catch(Exception e) {
+			}
+			
+			// 6. 기존 jar 파일 rename
+			String appFileName = appFileInfoUrl.split("=")[1];
+			String appFilePath = homePath + (homePath.endsWith("/") ? "" : "/") + appFileName;
+			String currentTime = this.formatDate(new Date(), "yyyyMMddHHmmss");
+			String appBakFilePath = appFilePath.replace(".jar", "-" + currentTime + ".jar");
+			this.logger.info("Jar file backup from [" + appFilePath + "] to [" + appBakFilePath + "]");
+			FileUtils.moveFile(new File(appFilePath), new File(appBakFilePath));
+			
+			// 7. latest-version.jar 파일을 기존 jar 파일로 rename
+			String latestFilePath = homePath + (homePath.endsWith("/") ? "" : "/") + latestFileName;
+			this.logger.info("Latest file rename from [" + latestFilePath + "] to [" + appFilePath + "]");
+			FileUtils.moveFile(new File(latestFilePath), new File(appFilePath));
+			
+			// 8. 애플리케이션 다시 시작 ...
+			this.logger.info("Restart application...");
+			this.startBoot(appId);
+			
 		} catch (Exception e) {
 			return "Failed to update application execution file : " + e.getMessage();
 		}
 
 		return "OK";
 	}
+	
+	/**
+	 * URL로 다운로드 
+	 * 
+	 * @param downloadUrl
+	 * @param downloadPath
+	 * @return
+	 * @throws Exception
+	 */
+	private int downloadByUrl(String downloadUrl, String downloadPath) throws Exception {
+		OutputStream outStream = null;
+		URLConnection uCon = null;
+		InputStream is = null;
+		int byteWritten = 0;
+		
+		try {
+			URL Url;
+			byte[] buf;
+			int byteRead;
+			Url = new URL(downloadUrl);
+			outStream = new BufferedOutputStream(new FileOutputStream(downloadPath));
+			uCon = Url.openConnection();
+			is = uCon.getInputStream();
+			buf = new byte[4096];
+			
+			while ((byteRead = is.read(buf)) != -1) {
+				outStream.write(buf, 0, byteRead);
+				byteWritten += byteRead;
+			}
+					
+		} catch (Exception e) {
+			throw e;
+		
+		} finally {
+			try {
+				is.close();
+				outStream.close();
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+
+		return byteWritten;
+	}
 
 	/**
 	 * Log File Path를 리턴
 	 * 
 	 * @param appId
+	 * @param first
 	 * @return
 	 */
 	private String getLogFilePath(String appId, boolean first) {
