@@ -54,8 +54,8 @@ public class AgentController {
 	protected Logger logger = LoggerFactory.getLogger(AgentController.class);
 
 	private static final String FILE_SEPARATOR = "/";
+	private static final String EMPTY_STR = "";
 	private static final String LOG_FILENAME = "application.";
-	private static final String LOG_FILENAME_2 = "applicatoin.";
 	private static final String LOG_FILE_EXT = ".log";
 
 	@Autowired
@@ -72,7 +72,7 @@ public class AgentController {
 	public Map<String, Object> index() {
 		
 		if(indexInfo.isEmpty()) {
-			indexInfo.put("Application", "Elidom Control Agent");
+			indexInfo.put("Application", "Control Agent");
 			indexInfo.put("Version", "1.0");
 			
 			Map<String, Object> urlInfo = new HashMap<String, Object>();
@@ -142,7 +142,7 @@ public class AgentController {
 			
 			if(appStatus.equalsIgnoreCase("UP")) {
 				String adminAppId = (String)appInfo.get("id");
-				String url = appsUrl + "/" + adminAppId + "/info";
+				String url = appsUrl + FILE_SEPARATOR + adminAppId + "/info";
 				Map<?, ?> appAddInfo = null;
 				
 				try {
@@ -304,7 +304,7 @@ public class AgentController {
 	 * @return
 	 */
 	private String getAgentUrl(String appPort, String api) {
-		return "http://localhost:" + appPort + "/" + api;
+		return "http://localhost:" + appPort + FILE_SEPARATOR + api;
 	}
 	
 	/**
@@ -378,7 +378,7 @@ public class AgentController {
 		/*RestTemplate rest = new RestTemplate();
 		String port = this.env.getProperty(appId + ".port");
 		String url = "http://localhost:" + port + "/shutdown";
-		ResponseEntity<String> response = rest.postForEntity(url, "", String.class);
+		ResponseEntity<String> response = rest.postForEntity(url, EMPTY_STR, String.class);
 		return response.getBody();*/
 		
 		HashMap<String, String> pMap = this.checkProperties(appId, "stop");
@@ -400,28 +400,37 @@ public class AgentController {
 	 */
 	@SuppressWarnings("unchecked")
 	@RequestMapping(value = "/apps/{app_id}/deploy", method = RequestMethod.POST)
-	public String deploy(@PathVariable("app_id") String appId) {
+	public String deploy(@PathVariable("app_id") String appId) throws Exception {
 		try {
-			// 1. 프로퍼티 체크 
+			// 1. 프로퍼티 체크
 			String appsAdminServerUrlKey = "apps.admin.server.url";
+			String appsTypeKey = appId + ".type";
 			String appHomePathKey = appId + ".home.path";
 			String appFileInfoUrlKey = appId + ".app.file.info.url";
-			String latestFileName = "latest-version.jar";
+			String deployScriptPathKey = appId + ".deploy.path";
 			
 			Assert.assertNotNull("[" + appsAdminServerUrlKey + "] must not be empty", this.env.getProperty(appsAdminServerUrlKey));
 			Assert.assertNotNull("[" + appHomePathKey + "] must not be empty", this.env.getProperty(appHomePathKey));
 			Assert.assertNotNull("[" + appFileInfoUrlKey + "] must not be empty", this.env.getProperty(appFileInfoUrlKey));
 			
 			// 2. http invoke by jar information url
+			String appType = this.env.getProperty(appsTypeKey);
+			appType = (appType == null || appType.equalsIgnoreCase("")) ? "server" : appType;
+			
+			if(!appType.equalsIgnoreCase("server")) {
+				Assert.assertNotNull("[" + deployScriptPathKey + "] must not be empty", this.env.getProperty(deployScriptPathKey));
+			}
+			
 			String appsAdminServerUrl = this.env.getProperty(appsAdminServerUrlKey);
 			String homePath = this.env.getProperty(appHomePathKey);
 			String appFileInfoUrl = this.env.getProperty(appFileInfoUrlKey);
-			String jarFileInfoUrl = "";
+			String latestFileName = (appType.equalsIgnoreCase("client")) ? "latest-version.zip" : "latest-version.jar";
+			String jarFileInfoUrl = null;
 			
 			RestTemplate rest = new RestTemplate();
 			if(!appFileInfoUrl.startsWith("http")) {
 				jarFileInfoUrl = appsAdminServerUrl;
-				jarFileInfoUrl += (appsAdminServerUrl.endsWith("/") || appFileInfoUrl.startsWith("/")) ? "" : "/";
+				jarFileInfoUrl += (appsAdminServerUrl.endsWith(FILE_SEPARATOR) || appFileInfoUrl.startsWith(FILE_SEPARATOR)) ? EMPTY_STR : FILE_SEPARATOR;
 				jarFileInfoUrl += appFileInfoUrl;
 			} else {
 				jarFileInfoUrl = appFileInfoUrl;
@@ -431,41 +440,52 @@ public class AgentController {
 			this.logger.info("Get file information by url [" + jarFileInfoUrl + "]");
 			Map<String, Object> fileInfo = rest.getForObject(jarFileInfoUrl, Map.class, new HashMap<String, Object>());
 			String fileId = (String)fileInfo.get("id");
-			String downloadUrl = appsAdminServerUrl + (appsAdminServerUrl.endsWith("/") ? "" : "/") + "rest/download/public/" + fileId;
+			String downloadUrl = appsAdminServerUrl + (appsAdminServerUrl.endsWith(FILE_SEPARATOR) ? EMPTY_STR : FILE_SEPARATOR) + "rest/download/public/" + fileId;
 			String downloadPath = homePath + File.separator + latestFileName;
 			this.logger.info("File downloading by url [" + downloadPath + "]");
 			this.downloadByUrl(downloadUrl, downloadPath);
 			this.logger.info("File downloaded!");
 			
-			// 4. 애플리케이션 stop 
-			this.stopBoot(appId);
-			this.logger.info("Application stopping...");
+			// 4.1 서버 타입인 경우
+			if(appType.equalsIgnoreCase("server")) {
+				// 4.1.1. 애플리케이션 stop 
+				this.stopBoot(appId);
+				this.logger.info("Application stopping...");
+				
+				// 4.1.2. 애플리케이션 죽을 때 까지 약간 기다렸다가 TODO 답이 없을 때까지 health api를 계속 호출하여 ...
+				try {
+					Thread.sleep(6000);
+				} catch(Exception e) {
+				}
+				
+				// 4.1.3. 기존 jar 파일 rename
+				String appFileName = appFileInfoUrl.split("=")[1];
+				String appFilePath = homePath + (homePath.endsWith(FILE_SEPARATOR) ? EMPTY_STR : FILE_SEPARATOR) + appFileName;
+				String currentTime = this.formatDate(new Date(), "yyyyMMddHHmmss");
+				String appBakFilePath = appFilePath.replace(".jar", "-" + currentTime + ".jar");
+				this.logger.info("Jar file backup from [" + appFilePath + "] to [" + appBakFilePath + "]");
+				FileUtils.moveFile(new File(appFilePath), new File(appBakFilePath));
+				
+				// 4.1.4. latest-version.jar 파일을 기존 jar 파일로 rename
+				String latestFilePath = homePath + (homePath.endsWith(FILE_SEPARATOR) ? EMPTY_STR : FILE_SEPARATOR) + latestFileName;
+				this.logger.info("Latest file rename from [" + latestFilePath + "] to [" + appFilePath + "]");
+				FileUtils.moveFile(new File(latestFilePath), new File(appFilePath));
+				
+				// 4.1.5. 애플리케이션 다시 시작 ...
+				this.logger.info("Restart application...");
+				this.startBoot(appId);
 			
-			// 5. 애플리케이션 죽을 때 까지 약간 기다렸다가 ...
-			try {
-				Thread.sleep(6000);
-			} catch(Exception e) {
+			// 4.2 클라이언트 타입인 경우 
+			} else {
+				// 4.2.1 배포 스크립트를 호출한다.
+				String deployScriptPath = this.env.getProperty(deployScriptPathKey);
+				this.logger.info("Call client deploy script [" + deployScriptPath + "]");
+				this.commandStart(deployScriptPath);
 			}
 			
-			// 6. 기존 jar 파일 rename
-			String appFileName = appFileInfoUrl.split("=")[1];
-			String appFilePath = homePath + (homePath.endsWith("/") ? "" : "/") + appFileName;
-			String currentTime = this.formatDate(new Date(), "yyyyMMddHHmmss");
-			String appBakFilePath = appFilePath.replace(".jar", "-" + currentTime + ".jar");
-			this.logger.info("Jar file backup from [" + appFilePath + "] to [" + appBakFilePath + "]");
-			FileUtils.moveFile(new File(appFilePath), new File(appBakFilePath));
-			
-			// 7. latest-version.jar 파일을 기존 jar 파일로 rename
-			String latestFilePath = homePath + (homePath.endsWith("/") ? "" : "/") + latestFileName;
-			this.logger.info("Latest file rename from [" + latestFilePath + "] to [" + appFilePath + "]");
-			FileUtils.moveFile(new File(latestFilePath), new File(appFilePath));
-			
-			// 8. 애플리케이션 다시 시작 ...
-			this.logger.info("Restart application...");
-			this.startBoot(appId);
-			
 		} catch (Exception e) {
-			return "Failed to update application execution file : " + e.getMessage();
+			this.logger.error("Failed to deploy application", e);
+			throw new Exception("Failed to deploy application : " + e.getMessage());
 		}
 
 		return "OK";
@@ -526,23 +546,17 @@ public class AgentController {
 		HashMap<String, String> pMap = this.checkProperties(appId, "log");
 		String path = pMap.get("PATH");
 		
-		// 첫번째 오늘 날짜 두번째 어제 날짜
+		// 첫번째 인 경우 : 오늘 날짜 두번째 어제 날짜
 		Date today = first ? new Date() : this.getDate(new Date(), -1); 
 		StringBuffer logPath = new StringBuffer();
-		logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? "" : FILE_SEPARATOR).append(LOG_FILENAME).append(this.formatDate(today, null)).append(LOG_FILE_EXT);
+		logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? EMPTY_STR : FILE_SEPARATOR).append(LOG_FILENAME).append(this.formatDate(today, null)).append(LOG_FILE_EXT);
 
 		File file = new File(logPath.toString());
 		if (!file.exists()) {
-			logPath = new StringBuffer();
-			logPath.append(path).append(path.endsWith(FILE_SEPARATOR) ? "" : FILE_SEPARATOR).append(LOG_FILENAME_2).append(this.formatDate(today, null)).append(LOG_FILE_EXT);
-			file = new File(logPath.toString());
-
-			if (!file.exists()) {
-				if(first) { 
-					return this.getLogFilePath(appId, false);
-				} else {
-					throw new RuntimeException("Log File (" + logPath.toString() + ") Not Found!");
-				}
+			if(first) {
+				return this.getLogFilePath(appId, false);
+			} else {
+				throw new RuntimeException("Log File (" + logPath.toString() + ") Not Found!");
 			}
 		}
 
@@ -1012,7 +1026,7 @@ public class AgentController {
 	 * @return
 	 */
 	private String getReturnMsg(int code) {
-		String msg = "";
+		String msg = EMPTY_STR;
 
 		if (code == 1) {
 			msg = "Can Not Read The Properties File!";
