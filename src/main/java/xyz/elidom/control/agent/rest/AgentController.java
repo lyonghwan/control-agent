@@ -500,35 +500,44 @@ public class AgentController {
 	 * @throws Exception
 	 */
 	private int downloadByUrl(String downloadUrl, String downloadPath) throws Exception {
+		URLConnection urlConn = null;
 		OutputStream outStream = null;
-		URLConnection uCon = null;
-		InputStream is = null;
+		InputStream inStream = null;
 		int byteWritten = 0;
 		
 		try {
-			URL Url;
-			byte[] buf;
-			int byteRead;
-			Url = new URL(downloadUrl);
+			URL url = new URL(downloadUrl);
+			urlConn = url.openConnection();
+			inStream = urlConn.getInputStream();
 			outStream = new BufferedOutputStream(new FileOutputStream(downloadPath));
-			uCon = Url.openConnection();
-			is = uCon.getInputStream();
-			buf = new byte[4096];
+			byte[] buf = new byte[4096];
+			int byteRead = 0;
 			
-			while ((byteRead = is.read(buf)) != -1) {
+			while ((byteRead = inStream.read(buf)) != -1) {
 				outStream.write(buf, 0, byteRead);
 				byteWritten += byteRead;
 			}
-					
+		} catch (IOException ioe) {
+			if(urlConn == null) {
+				this.logger.error("Failed to connect to url [" + downloadPath + "]");
+			}
+			
+			throw ioe;
+			
 		} catch (Exception e) {
 			throw e;
 		
 		} finally {
 			try {
-				is.close();
-				outStream.close();
+				if(inStream != null) {
+					inStream.close();
+				}
+				
+				if(outStream != null) {
+					outStream.close();
+				}
 			} catch (IOException e) {
-				e.printStackTrace();
+				this.logger.error(e.getMessage(), e);
 			}
 		}
 

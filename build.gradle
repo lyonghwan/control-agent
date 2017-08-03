@@ -15,7 +15,7 @@ buildscript {
 	}
 }
 
-version = '1.4.4'
+version = '2.0.0'
 
 apply from : 'elings.gradle'
 apply plugin: 'org.springframework.boot'
@@ -41,7 +41,6 @@ repositories {
 }
 
 ext {
-//	elidomVersion = '1.4.4-SNAPSHOT'
 	elidomVersion = 'latest.integration'
 }
 
