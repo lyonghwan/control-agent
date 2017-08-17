@@ -375,10 +375,10 @@ public class AgentController {
 	 * @return
 	 */
 	@RequestMapping(value = "/apps/{app_id}/backup_server", method = RequestMethod.GET)
-	public String restartByChangeDomain(@PathVariable("app_id") String appId, @PathVariable("domain_id") String domainId) throws Exception {
-		// 1. Admin API를 호출하여 Profile을 찾아내어 프로퍼티 파일명을 찾아낸다.  
+	public String backupServer(@PathVariable("domain_id") String domainId) throws Exception {
+		// 1. 동기화 서버 호출 
 		RestTemplate rest = new RestTemplate();
-		String appPortKey = appId + ".port";
+		String appPortKey = "sync.port";
 		String syncDataUrl = "http://localhost:" + this.env.getProperty(appPortKey) + "/sync/backupStart?domain_id=" + domainId;
 		
 		try {
@@ -388,8 +388,21 @@ public class AgentController {
 			throw new Exception("Failed to sync data : " + e.getMessage());			
 		}
 		
+		// 2. 서버 Restart 
 		try {
-			return this.restartBoot(appId);
+			// mgt, agent, monitor
+			String result = this.restartBoot("mgt");
+			
+			if("OK".equalsIgnoreCase(result)) {
+				result = this.restartBoot("agent");
+				
+				if("OK".equalsIgnoreCase(result)) {
+					result = this.restartBoot("monitor");
+				}				
+			}
+			
+			return result;
+			
 		} catch (Exception e) {
 			this.logger.error("Failed to restart application", e);
 			throw new Exception("Failed to restart application : " + e.getMessage());			
