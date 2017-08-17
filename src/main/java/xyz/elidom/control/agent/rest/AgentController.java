@@ -374,7 +374,7 @@ public class AgentController {
 	 * @param domainId
 	 * @return
 	 */
-	@RequestMapping(value = "/apps/{app_id}/backup_server", method = RequestMethod.GET)
+	@RequestMapping(value = "/apps/backup_server", method = RequestMethod.POST)
 	public String backupServer(@PathVariable("domain_id") String domainId) throws Exception {
 		// 1. 동기화 서버 호출 
 		RestTemplate rest = new RestTemplate();
