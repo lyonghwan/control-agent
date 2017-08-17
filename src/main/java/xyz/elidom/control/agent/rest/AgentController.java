@@ -352,7 +352,7 @@ public class AgentController {
 	 * @return execute message
 	 */
 	@RequestMapping(value = "/apps/{app_id}/restart", method = RequestMethod.POST)
-	public String retartBoot(@PathVariable("app_id") String appId) {
+	public String restartBoot(@PathVariable("app_id") String appId) {
 		try {
 			this.stopBoot(appId);
 		} catch (Exception e) {
@@ -365,6 +365,35 @@ public class AgentController {
 		}
 
 		return this.startBoot(appId);
+	}
+	
+	/**
+	 * 데이터 동기화 호출 & Restart  
+	 * 
+	 * @param appId
+	 * @param domainId
+	 * @return
+	 */
+	@RequestMapping(value = "/apps/{app_id}/backup_server", method = RequestMethod.GET)
+	public String restartByChangeDomain(@PathVariable("app_id") String appId, @PathVariable("domain_id") String domainId) throws Exception {
+		// 1. Admin API를 호출하여 Profile을 찾아내어 프로퍼티 파일명을 찾아낸다.  
+		RestTemplate rest = new RestTemplate();
+		String appPortKey = appId + ".port";
+		String syncDataUrl = "http://localhost:" + this.env.getProperty(appPortKey) + "/sync/backupStart?domain_id=" + domainId;
+		
+		try {
+			rest.getForObject(syncDataUrl, Boolean.class);
+		} catch (Exception e) {
+			this.logger.error("Failed to sync data", e);
+			throw new Exception("Failed to sync data : " + e.getMessage());			
+		}
+		
+		try {
+			return this.restartBoot(appId);
+		} catch (Exception e) {
+			this.logger.error("Failed to restart application", e);
+			throw new Exception("Failed to restart application : " + e.getMessage());			
+		}
 	}
 
 	/**
