@@ -366,48 +366,6 @@ public class AgentController {
 
 		return this.startBoot(appId);
 	}
-	
-	/**
-	 * 데이터 동기화 호출 & Restart  
-	 * 
-	 * @param appId
-	 * @param domainId
-	 * @return
-	 */
-	@RequestMapping(value = "/apps/backup_server/{domain_id}", method = RequestMethod.POST)
-	public String backupServer(@PathVariable("domain_id") String domainId) throws Exception {
-		// 1. 동기화 서버 호출 
-		RestTemplate rest = new RestTemplate();
-		String appPortKey = "sync.port";
-		String syncDataUrl = "http://localhost:" + this.env.getProperty(appPortKey) + "/sync/backupStart?domain_id=" + domainId;
-		
-		try {
-			rest.getForObject(syncDataUrl, Boolean.class);
-		} catch (Exception e) {
-			this.logger.error("Failed to sync data", e);
-			throw new Exception("Failed to sync data : " + e.getMessage());			
-		}
-		
-		// 2. 서버 Restart 
-		try {
-			// mgt, agent, monitor
-			String result = this.restartBoot("mgt");
-			
-			if("OK".equalsIgnoreCase(result)) {
-				result = this.restartBoot("agent");
-				
-				if("OK".equalsIgnoreCase(result)) {
-					result = this.restartBoot("monitor");
-				}				
-			}
-			
-			return result;
-			
-		} catch (Exception e) {
-			this.logger.error("Failed to restart application", e);
-			throw new Exception("Failed to restart application : " + e.getMessage());			
-		}
-	}
 
 	/**
 	 * Application Stop
