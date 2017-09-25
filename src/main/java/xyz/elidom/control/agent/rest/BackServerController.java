@@ -68,11 +68,17 @@ public class BackServerController {
 		String appPortKey = "sync.port";
 		String syncDataUrl = "http://localhost:" + this.env.getProperty(appPortKey) + "/sync/backupStart?domain_id=" + domainId;
 		
+		Boolean syncRes = false;
+		
 		try {
-			rest.getForObject(syncDataUrl, Boolean.class);
+			syncRes = rest.getForObject(syncDataUrl, Boolean.class);
 		} catch (Exception e) {
 			this.logger.error("Failed to sync data", e);
 			throw new Exception("Failed to sync data : " + e.getMessage());			
+		}
+		
+		if(syncRes == false) {
+			throw new Exception("Failed to sync data");
 		}
 		
 		// 2. 서버 Restart 
@@ -135,11 +141,17 @@ public class BackServerController {
 		String appPortKey = "sync.port";
 		String syncDataUrl = "http://localhost:" + this.env.getProperty(appPortKey) + "/sync/backupStop?domain_id=" + domainId;
 		
+		Boolean syncDataRes = false;
+		
 		try {
-			rest.getForObject(syncDataUrl, Boolean.class);
+			syncDataRes = rest.getForObject(syncDataUrl, Boolean.class);
 		} catch (Exception e) {
 			this.logger.error("Failed to clear data", e);
 			throw new Exception("Failed to clear data : " + e.getMessage());			
+		}
+		
+		if(syncDataRes == false) {
+			throw new Exception("Failed to clear data");
 		}
 		
 		// 2. 서버 Stop 
