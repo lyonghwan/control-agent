@@ -18,6 +18,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
@@ -37,6 +38,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.env.Environment;
 import org.springframework.http.MediaType;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -45,6 +47,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
 
+import net.lingala.zip4j.core.ZipFile;
 import xyz.elidom.control.agent.util.StreamPrinter;
 
 @CrossOrigin
@@ -57,6 +60,8 @@ public class AgentController {
 	private static final String EMPTY_STR = "";
 	private static final String LOG_FILENAME = "application.";
 	private static final String LOG_FILE_EXT = ".log";
+	
+	private static final int KEEP_DEPLOY_APP_CNT = 3;
 
 	@Autowired
 	private Environment env;
@@ -105,6 +110,40 @@ public class AgentController {
 	public String ping() {
 		return "pong";
 	}
+	
+	/**
+	 * version check
+	 */
+	@RequestMapping(value = "/control-version", method = RequestMethod.GET)
+	public String version() {
+		return "2.0";
+	}
+	
+	/**
+	 * client version check
+	 */
+	@RequestMapping(value = "/client-version", method = RequestMethod.GET)
+	public String clientVersion() {
+		String clientVersionPath = env.getProperty("client.home.path", "");
+		
+		if(StringUtils.isEmpty(clientVersionPath.trim())) {
+			return "";
+		} 
+		
+		clientVersionPath = clientVersionPath + File.separator + "cj-sms-sub-mgt" + File.separator + "version.txt";
+		
+		File versionTxtFile = new File(clientVersionPath);
+		if(versionTxtFile.exists() == false) return "";
+		
+		try {
+			return FileUtils.readFileToString(versionTxtFile, Charset.defaultCharset());
+		}catch(Exception e) {
+			return "";
+		}
+	}
+	
+	
+	
 
 	/**
 	 * Control Agent가 관리하는 모든 애플리케이션 요약 정보를 리턴 
@@ -407,6 +446,200 @@ public class AgentController {
 			String appsTypeKey = appId + ".type";
 			String appHomePathKey = appId + ".home.path";
 			String appFileInfoUrlKey = appId + ".app.file.info.url";
+			
+			Assert.assertNotNull("[" + appsAdminServerUrlKey + "] must not be empty", this.env.getProperty(appsAdminServerUrlKey));
+			Assert.assertNotNull("[" + appHomePathKey + "] must not be empty", this.env.getProperty(appHomePathKey));
+			Assert.assertNotNull("[" + appFileInfoUrlKey + "] must not be empty", this.env.getProperty(appFileInfoUrlKey));
+			
+			// 2. http invoke by jar information url
+			String appType = this.env.getProperty(appsTypeKey);
+			appType = (appType == null || appType.equalsIgnoreCase("")) ? "server" : appType;
+			
+			String appsAdminServerUrl = this.env.getProperty(appsAdminServerUrlKey);
+			String homePath = this.env.getProperty(appHomePathKey);
+			String appFileInfoUrl = this.env.getProperty(appFileInfoUrlKey);
+			String deployFileName = (appType.equalsIgnoreCase("client")) ? "deploy-version.zip" : "deploy-version.jar";
+			String jarFileInfoUrl = null;
+			
+			RestTemplate rest = new RestTemplate();
+			if(!appFileInfoUrl.startsWith("http")) {
+				jarFileInfoUrl = appsAdminServerUrl;
+				jarFileInfoUrl += (appsAdminServerUrl.endsWith(FILE_SEPARATOR) || appFileInfoUrl.startsWith(FILE_SEPARATOR)) ? EMPTY_STR : FILE_SEPARATOR;
+				jarFileInfoUrl += appFileInfoUrl;
+			} else {
+				jarFileInfoUrl = appFileInfoUrl;
+			}
+			
+			// 3. file 정보로 부터 복사할 파일의 URL을 추출 ...
+			this.logger.info("Get file information by url [" + jarFileInfoUrl + "]");
+			Map<String, Object> fileInfo = rest.getForObject(jarFileInfoUrl, Map.class, new HashMap<String, Object>());
+			String fileId = (String)fileInfo.get("id");
+			String downloadUrl = appsAdminServerUrl + (appsAdminServerUrl.endsWith(FILE_SEPARATOR) ? EMPTY_STR : FILE_SEPARATOR) + "rest/download/public/" + fileId;
+			String downloadPath = homePath + File.separator + deployFileName;
+			this.logger.info("File downloading by url [" + downloadPath + "]");
+			this.downloadByUrl(downloadUrl, downloadPath);
+			this.logger.info("File downloaded!");
+			
+			// 4.1 서버 타입인 경우
+			if(appType.equalsIgnoreCase("server")) {
+				// 4.1.1. 애플리케이션 stop 
+				this.stopBoot(appId);
+				this.logger.info("Application stopping...");
+				
+				// 4.1.2. 애플리케이션 죽을 때 까지 약간 기다렸다가 TODO 답이 없을 때까지 health api를 계속 호출하여 ...
+				try {
+					Thread.sleep(10000);
+				} catch(Exception e) {
+				}
+				
+				// 4.1.3. 기존 jar 파일 rename
+				String appFileName = appFileInfoUrl.split("=")[1];
+				String appFilePath = homePath + (homePath.endsWith(FILE_SEPARATOR) ? EMPTY_STR : FILE_SEPARATOR) + appFileName;
+				String currentTime = this.formatDate(new Date(), "yyyyMMddHHmmss");
+				String appBakFilePath = appFilePath.replace(".jar", "-" + currentTime + "-sys-deploy.jar");
+				this.logger.info("Jar file backup from [" + appFilePath + "] to [" + appBakFilePath + "]");
+				FileUtils.moveFile(new File(appFilePath), new File(appBakFilePath));
+
+				// 4.1.4 기존 jar 파일에 대한 보관 
+				this.deployFileMgmt(homePath, appType);
+				
+				// 4.1.5. deploy-version.jar 파일을 기존 jar 파일로 rename
+				String latestFilePath = homePath + (homePath.endsWith(FILE_SEPARATOR) ? EMPTY_STR : FILE_SEPARATOR) + deployFileName;
+				this.logger.info("Latest file rename from [" + latestFilePath + "] to [" + appFilePath + "]");
+				FileUtils.moveFile(new File(latestFilePath), new File(appFilePath));
+				
+				// 4.1.6. 애플리케이션 다시 시작 ...
+				this.logger.info("Restart application...");
+				this.startBoot(appId);
+			
+			// 4.2 클라이언트 타입인 경우 
+			} else {
+				// 4.2.1 기존 client 폴더 rename.
+				String appFileName = appFileInfoUrl.split("=")[1].replaceAll(".zip","");
+				String appFilePath = homePath + (homePath.endsWith(FILE_SEPARATOR) ? EMPTY_STR : FILE_SEPARATOR) + appFileName;
+				String currentTime = this.formatDate(new Date(), "yyyyMMddHHmmss");
+				String appBakFilePath = appFilePath + "-" + currentTime + "-sys-deploy";
+				this.logger.info("client directory backup from [" + appFilePath + "] to [" + appBakFilePath + "]");
+				FileUtils.moveDirectory(new File(appFilePath), new File(appBakFilePath));
+
+				// 4.2.2 client 에 대한 보관 
+				this.deployFileMgmt(homePath, appType);
+				
+				// 4.2.3 deploy-version.zip 압축해제 
+				String zipFilePath = homePath + (homePath.endsWith(FILE_SEPARATOR) ? EMPTY_STR : FILE_SEPARATOR) + deployFileName;
+				File deployZip = new File (zipFilePath);
+				
+				try {
+					ZipFile zipFile = new ZipFile(deployZip);
+			         zipFile.extractAll(homePath);
+			    } catch (Exception e) {
+			    		throw e;
+			    } finally {
+			    		deployZip.delete();
+			    }
+			}
+			
+		} catch (Exception e) {
+			this.logger.error("Failed to deploy application", e);
+			throw new Exception("Failed to deploy application : " + e.getMessage());
+		}
+
+		return "OK";
+	}
+
+	/**
+	 * Application Rollback
+	 * @param appId
+	 * @return
+	 * @throws Exception
+	 */
+	@SuppressWarnings("unchecked")
+	@RequestMapping(value = "/apps/{app_id}/rollback", method = RequestMethod.POST)
+	public String rollback(@PathVariable("app_id") String appId) throws Exception {
+		try {
+			// 1. 프로퍼티 체크
+			String appsTypeKey = appId + ".type";
+			String appHomePathKey = appId + ".home.path";
+			String appFileInfoUrlKey = appId + ".app.file.info.url";
+			
+			Assert.assertNotNull("[" + appHomePathKey + "] must not be empty", this.env.getProperty(appHomePathKey));
+			Assert.assertNotNull("[" + appFileInfoUrlKey + "] must not be empty", this.env.getProperty(appFileInfoUrlKey));
+			
+			// 2. http invoke by jar information url
+			String appType = this.env.getProperty(appsTypeKey);
+			appType = (appType == null || appType.equalsIgnoreCase("")) ? "server" : appType;
+			
+			String homePath = this.env.getProperty(appHomePathKey);
+			String appFileInfoUrl = this.env.getProperty(appFileInfoUrlKey);
+			
+			// 3. 가장 최근 배포한 파일 정보 
+			List<String> pathList = this.getAppFileList(homePath, appType);
+			if(pathList.size() == 0) {
+				throw new Exception("Not exist Rollback target Apps ");
+			}
+			
+			String latestPath = pathList.get(0);
+			
+			
+			// 4.1 서버 타입인 경우
+			if(appType.equalsIgnoreCase("server")) {
+				// 4.1.1. 애플리케이션 stop 
+				this.stopBoot(appId);
+				this.logger.info("Application stopping...");
+				
+				// 4.1.2. 애플리케이션 죽을 때 까지 약간 기다렸다가 TODO 답이 없을 때까지 health api를 계속 호출하여 ...
+				try {
+					Thread.sleep(10000);
+				} catch(Exception e) {
+				}
+
+				// 4.1.3 ㅇ어플리케이션 backup
+				String appFileName = appFileInfoUrl.split("=")[1];
+				String appFilePath = homePath + (homePath.endsWith(FILE_SEPARATOR) ? EMPTY_STR : FILE_SEPARATOR) + appFileName;
+				String currentTime = this.formatDate(new Date(), "yyyyMMddHHmmss");
+				String appBakFilePath = appFilePath.replace(".jar", "-" + currentTime + "-sys-deploy.jar");
+				this.logger.info("Jar file backup from [" + appFilePath + "] to [" + appBakFilePath + "]");
+				FileUtils.moveFile(new File(appFilePath), new File(appBakFilePath));
+
+				// 4.1.4 가장 최근 배포한 어플리케이션 복구
+				this.logger.info("Jar file recover from [" + latestPath + "] to [" + appFilePath + "]");
+				FileUtils.moveFile(new File(latestPath), new File(appFilePath));
+				
+				// 4.1.5. 애플리케이션 다시 시작 ...
+				this.logger.info("Restart application...");
+				this.startBoot(appId);
+			
+			// 3.2 클라이언트 타입인 경우 
+			} else {
+				// 4.2.1 기존 client 폴더 rename.
+				String appFileName = appFileInfoUrl.split("=")[1].replaceAll(".zip","");
+				String appFilePath = homePath + (homePath.endsWith(FILE_SEPARATOR) ? EMPTY_STR : FILE_SEPARATOR) + appFileName;
+				String currentTime = this.formatDate(new Date(), "yyyyMMddHHmmss");
+				String appBakFilePath = appFilePath + "-" + currentTime + "-sys-deploy";
+				this.logger.info("client directory backup from [" + appFilePath + "] to [" + appBakFilePath + "]");
+				FileUtils.moveDirectory(new File(appFilePath), new File(appBakFilePath));
+
+				// 4.2.2 가장 최근 배포한 client 복구
+				this.logger.info("client directory recover from [" + latestPath + "] to [" + appFilePath + "]");
+				FileUtils.moveDirectory(new File(latestPath), new File(appFilePath));
+			}
+		} catch (Exception e) {
+			this.logger.error("Failed to Rollback application", e);
+			throw new Exception("Failed to Rollback application : " + e.getMessage());
+		}
+
+		return "OK";
+	}
+	
+	@SuppressWarnings("unchecked")
+	@RequestMapping(value = "/apps/{app_id}/deploy_back", method = RequestMethod.POST)
+	public String deploy_back(@PathVariable("app_id") String appId) throws Exception {
+		try {
+			// 1. 프로퍼티 체크
+			String appsAdminServerUrlKey = "apps.admin.server.url";
+			String appsTypeKey = appId + ".type";
+			String appHomePathKey = appId + ".home.path";
+			String appFileInfoUrlKey = appId + ".app.file.info.url";
 			String deployScriptPathKey = appId + ".deploy.path";
 			
 			Assert.assertNotNull("[" + appsAdminServerUrlKey + "] must not be empty", this.env.getProperty(appsAdminServerUrlKey));
@@ -490,6 +723,52 @@ public class AgentController {
 
 		return "OK";
 	}
+
+	/**
+	 * Application File List
+	 * 
+	 * @param appId
+	 * @return
+	 */
+	@RequestMapping(value = "/apps/{app_id}/file/view", method = RequestMethod.GET, produces = MediaType.APPLICATION_JSON_VALUE)
+	public List<Map<String, Object>> appsFileList(@PathVariable("app_id") String appId) {
+		String path;
+		if(appId.equalsIgnoreCase("client")) {
+			path = this.env.getProperty(appId + ".home.path");
+		} else {
+			HashMap<String, String> pMap = this.checkProperties(appId, "home");
+			path = pMap.get("PATH");
+		}
+		
+		return this.getFileList(path);
+	}
+	
+	
+	private List<Map<String,Object>> getFileList(String path){
+		File dirPath = new File(path);
+		List<Map<String, Object>> fileList = new ArrayList<Map<String, Object>>();
+		
+		File[] pathFiles = dirPath.listFiles();
+		for(File pFile : pathFiles) {
+			String fileName = pFile.getName();
+			
+			Map<String, Object> fData = new HashMap<String, Object>(3);
+			if(pFile.isDirectory()) {
+				fData.put("type","d");
+				fData.put("name", fileName);
+				fData.put("child", this.getFileList(pFile.getAbsolutePath()));
+			} else {
+				fData.put("type","f");
+				fData.put("name", fileName);
+				fData.put("size", pFile.length());
+			}
+			fileList.add(fData);
+		}
+		
+		fileList.sort(new FileListComparator());
+		return fileList;
+	}
+	
 	
 	/**
 	 * URL로 다운로드 
@@ -774,6 +1053,7 @@ public class AgentController {
 		return result;		
 	}
 
+	
 	/**
 	 * 오늘의 로그 파일을 읽어서 내용을 리턴
 	 * 
@@ -1057,6 +1337,62 @@ public class AgentController {
 		}
 
 		return msg;
+	}
+	
+	
+	/**
+	 * 파일 보관 룰 관리 
+	 * @param homePath
+	 * @param appType
+	 * @throws Exception
+	 */
+	private void deployFileMgmt(String homePath, String appType) throws Exception {
+		 
+		List<String> pathList = this.getAppFileList(homePath, appType);
+		
+		int skipCnt = 0;
+		for(String delPath : pathList) {
+			skipCnt++;
+			this.logger.info(delPath);
+			if(skipCnt > KEEP_DEPLOY_APP_CNT) FileUtils.forceDelete(new File(delPath));
+		}
+	}
+	
+	private List<String> getAppFileList(String homePath, String appType){
+		List<String> pathList = new ArrayList<String>() ;
+		String endWith;
+		
+		if(appType.equalsIgnoreCase("server")) {
+			endWith = "-sys-deploy.jar";
+		} else {
+			endWith = "-sys-deploy";
+		}
+		
+
+		File homeDir = new File(homePath);
+		File[] homeFileList = homeDir.listFiles();
+		for(File appFile : homeFileList) {
+			String fileName = appFile.getName();
+			if(fileName.endsWith(endWith)) {
+				String jarPath = appFile.getAbsolutePath();
+				pathList.add(jarPath);
+			}
+		}
+		
+		Collections.sort(pathList, Collections.reverseOrder());
+		
+		return pathList;
+	}
+	
+	
+	
+	class FileListComparator implements Comparator<Map<String, Object>> {
+		@Override
+		public int compare(Map<String, Object> data1, Map<String, Object> data2) {
+			String name1 = data1.get("type").toString() + data1.get("name").toString();
+			String name2 = data2.get("type").toString() + data2.get("name").toString();
+			return name1.compareTo(name2);
+		}
 	}
 	
 	/**
