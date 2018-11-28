@@ -78,7 +78,7 @@ public class AgentController {
 		
 		if(indexInfo.isEmpty()) {
 			indexInfo.put("Application", "Control Agent");
-			indexInfo.put("Version", "1.0");
+			indexInfo.put("Version", "3.0");
 			
 			Map<String, Object> urlInfo = new HashMap<String, Object>();
 			urlInfo.put("Control Agent Health Check", "/ping:GET");
@@ -553,7 +553,6 @@ public class AgentController {
 	 * @return
 	 * @throws Exception
 	 */
-	@SuppressWarnings("unchecked")
 	@RequestMapping(value = "/apps/{app_id}/rollback", method = RequestMethod.POST)
 	public String rollback(@PathVariable("app_id") String appId) throws Exception {
 		try {
