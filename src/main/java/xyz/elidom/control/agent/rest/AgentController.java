@@ -116,7 +116,7 @@ public class AgentController {
 	 */
 	@RequestMapping(value = "/control-version", method = RequestMethod.GET)
 	public String version() {
-		return "2.0";
+		return "3.0";
 	}
 	
 	/**
