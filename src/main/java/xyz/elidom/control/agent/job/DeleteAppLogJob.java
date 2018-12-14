@@ -70,8 +70,8 @@ public class DeleteAppLogJob {
 		int nginxLogKeepDate = env.getProperty("nginx.log.keep.date", Integer.class, 180);
 		String nginxLogPath = env.getProperty("nginx.log.path", String.class, "C:/cj-sms-sub/infra-sw/nginx/nginx-1.10.3/logs");
 		
-		String accessStartWith = "access";
-		String accessFileTemplate = accessStartWith + "_%s.log";
+		String accessStartWith = "access_";
+		String accessFileTemplate = accessStartWith + "%s.log";
 		
 		List<String> accessFileList = this.getFileList(nginxLogPath, accessStartWith);
 		
