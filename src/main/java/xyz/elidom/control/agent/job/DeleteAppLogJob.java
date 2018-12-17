@@ -68,12 +68,15 @@ public class DeleteAppLogJob {
 	
 	private void deleteNginxLogFiles() throws Exception{
 		int nginxLogKeepDate = env.getProperty("nginx.log.keep.date", Integer.class, 180);
+		nginxLogKeepDate = nginxLogKeepDate -1;
 		String nginxLogPath = env.getProperty("nginx.log.path", String.class, "C:/cj-sms-sub/infra-sw/nginx/nginx-1.10.3/logs");
 		
 		String accessStartWith = "access_";
 		String accessFileTemplate = accessStartWith + "%s.log";
 		
 		List<String> accessFileList = this.getFileList(nginxLogPath, accessStartWith);
+		
+		if(nginxLogKeepDate < 0 ) nginxLogKeepDate = 0;
 		
 		// 보관 대상 파일 필터 
 		for(int i = 0 ; i <= nginxLogKeepDate ; i++) {
