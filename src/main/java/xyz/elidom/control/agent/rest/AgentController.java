@@ -78,7 +78,7 @@ public class AgentController {
 		
 		if(indexInfo.isEmpty()) {
 			indexInfo.put("Application", "Control Agent");
-			indexInfo.put("Version", "3.0");
+			indexInfo.put("Version", "4.0");
 			
 			Map<String, Object> urlInfo = new HashMap<String, Object>();
 			urlInfo.put("Control Agent Health Check", "/ping:GET");
@@ -116,7 +116,7 @@ public class AgentController {
 	 */
 	@RequestMapping(value = "/control-version", method = RequestMethod.GET)
 	public String version() {
-		return "3.0";
+		return "4.0";
 	}
 	
 	/**
